@@ -1,112 +1,35 @@
 # WordPress Docker Template
 
-This is a boilerplate for creating Docker-based WordPress sites deployed to a Hetzner VPS via GitHub Actions. It follows the same deployment pattern as the other projects on this server (allegro-it-services, DonorLink).
+Claude context for this repo. It's a clone-and-own template for Dockerised WordPress sites: a thin image (WordPress 7.0 + PHP 8.4), MySQL 8.4 LTS, local dev via Docker Compose, CI + GHCR releases, and an optional SSH deploy to any Docker host. The user-facing guide is in `README.md`; this file is the working context for Claude.
 
-## How to Use This Template to Create a New Site
+## Using this template
 
-When asked to create a new WordPress site from this template, follow these steps exactly:
+This repo is the template itself. To start a site from it:
 
-### Step 1: Copy the template
-Copy the entire contents of this directory to a new repo folder. The target folder should be at `C:\Users\Bruger\source\repos\<site-name>` (the user's standard repos location). Remove the `.git` folder from the copy.
+1. Clone it, set `COMPOSE_PROJECT_NAME` in `.env` (copied from `.env.example`), and run `./dev.sh up` — see `README.md` ("Quick start").
+2. Build the site locally; commit theme/plugin changes under `wp-content/`.
+3. Deploy to your own server when ready — see `README.md` ("Deploy to your server"). Deployment stays dormant until the `DEPLOY_HOST` / `DEPLOY_SSH_KEY` secrets are set, so a fresh clone never produces a failing deploy.
+4. To move it onto another account and/or track this repo for updates, see `README.md` ("Make it your own").
 
-### Step 2: Customize for the domain
-Given a domain like `example.com`, derive a site name (e.g., `example` or a slug the user provides). Then:
-
-1. **Create `.env`** (from `.env.example`):
-   ```env
-   COMPOSE_FILE=docker-compose.yml
-   COMPOSE_PROJECT_NAME=<site-name>
-   ```
-
-2. **Update `CLAUDE.md`** in the new repo — replace this template documentation with site-specific info (domain, site name, purpose).
-
-3. **No changes needed** to `docker-compose.yml` or `docker-compose.production.yml` — they use `${COMPOSE_PROJECT_NAME}` from `.env`.
-
-### Step 3: Initialize Git
-```bash
-cd <new-repo-folder>
-git init
-git add .
-git commit -m "Initial WordPress setup from wp_image template"
-```
-
-### Step 4: Create GitHub repo and push
-Create a **private** GitHub repo using `gh` CLI and push:
-```bash
-cd <new-repo-folder>
-gh repo create jackwjensen/<repo-name> --private --source=. --push
-```
-If the push fails due to workflow scope, tell the user to push from GitHub Desktop instead.
-
-### Step 5: Tell the user what to do next
-After creating the repo, instruct the user to:
-
-1. **Generate SSH deploy key on the server** (GitHub requires a unique key per repo):
-   ```bash
-   ssh-keygen -t ed25519 -C "github-deploy-<site-name>" -f /root/.ssh/deploy_<site-name> -N ""
-   ```
-
-2. **Add the public key as a deploy key on GitHub**:
-   - Go to: `https://github.com/jackwjensen/<repo-name>/settings/keys`
-   - Add deploy key, paste output of `cat /root/.ssh/deploy_<site-name>.pub`
-   - Check **Allow write access**
-
-3. **Add GitHub Actions Secrets**:
-   - `HETZNER_HOST` — server IP
-   - `HETZNER_SSH_KEY` — paste output of `cat /root/.ssh/deploy_<site-name>` (the private key)
-
-4. **Add SSH config alias on the server** (so git uses the correct key):
-   ```bash
-   cat >> /root/.ssh/config << 'EOF'
-
-   Host github-<site-name>
-       HostName github.com
-       User git
-       IdentityFile /root/.ssh/deploy_<site-name>
-       IdentitiesOnly yes
-   EOF
-   ```
-
-5. **Set up the server**:
-   ```bash
-   ./scripts/setup-server.sh <site-name> git@github-<site-name>:jackwjensen/<repo-name>.git
-   ```
-   This clones the repo, generates MySQL password, creates `.env`, builds the image, starts containers, waits for WordPress, and fixes permissions.
-
-6. **Configure Nginx Proxy Manager**:
-   - Add proxy host: `example.com` → `<site-name>-wordpress:80` (port 80, NOT 8080)
-   - Enable SSL (Let's Encrypt)
-   - The container name is `${COMPOSE_PROJECT_NAME}-wordpress` (set in docker-compose.production.yml)
-
-7. **Import existing site with Duplicator** (if migrating):
-   - Complete the WordPress install wizard first (use throwaway values — Duplicator overwrites everything)
-   - Copy Duplicator files to the server (scp or similar)
-   - Run: `./scripts/import-duplicator.sh installer.php <archive.zip>`
-   - Open `https://example.com/installer.php` in browser
-   - **DB settings in Duplicator**: Host=`mysql` (NOT localhost), Name=`wordpress`, User=`root`, Password=(from .env)
-   - After import: commit wp-content changes, push to deploy
-
-8. **Start local dev**: `dev.bat up` then open `http://localhost:8080`
-
-9. **Sync production DB to local** (after Duplicator import on prod):
-   ```bash
-   ./scripts/sync-db-from-prod.sh <site-name> <domain> http://localhost:8080
-   ```
+Conventions worth knowing:
+- **One site per repo**; each sets a unique `COMPOSE_PROJECT_NAME`, which names the production containers `<project>-wordpress` / `<project>-mysql` so a reverse proxy can route to the right one.
+- **Migrating an existing site?** Use Duplicator — see the gotchas below and `README.md` ("Migrating an existing site").
+- **Per-repo deploy key**: GitHub rejects reusing one SSH deploy key across repos; give each its own (and, if several share a host, an SSH config alias so git picks the right one).
 
 ## Important Gotchas
 
 - **DB host is `mysql`, not `localhost`** — inside Docker, each container has its own network. `localhost` inside the WordPress container refers to itself. The MySQL container is reachable via Docker DNS as `mysql` (the service name from docker-compose.yml).
-- **NPM proxy target is port 80, not 8080** — Apache inside the WordPress container listens on port 80. Port 8080 is only the host mapping used in local dev.
+- **Reverse-proxy target is port 80, not 8080** — Apache inside the WordPress container listens on port 80. Port 8080 is only the host mapping used in local dev.
 - **Duplicator files go INSIDE the container** — files placed on the server filesystem aren't served by Apache. Use `docker compose cp` or the `import-duplicator.sh` script.
 - **wp-content permissions** — the container runs Apache as `www-data`. After any file operations, fix ownership: `docker compose exec wordpress chown -R www-data:www-data /var/www/html/wp-content`
 - **Uploads subdirectories** — after a fresh DB import, plugins may expect subdirectories under `wp-content/uploads/` that don't exist in the volume. Fix with: `docker compose exec wordpress chown -R www-data:www-data /var/www/html/wp-content/uploads` (the plugin will create its subdirectory on next request once permissions are correct).
 - **WordPress install wizard must be completed first** — on a fresh container, WordPress shows its install wizard before any other URL works. Complete it with throwaway values before running Duplicator.
 - **GitHub deploy keys are unique per repo** — the same SSH public key cannot be added to multiple repos. Use SSH config host aliases to map each repo to its own key.
-- **Production .env is critical** — without it, containers start in dev mode (ports exposed, not on nginx-proxy-network). The `setup-server.sh` script creates this automatically.
+- **Production .env is critical** — without it, containers start in dev mode (ports exposed, not on the proxy network). The `setup-server.sh` script creates this automatically.
 - **WP-CLI is NOT in the WordPress container** — the official `wordpress:` image does not include `wp`. The `wpcli` service in docker-compose.yml uses a separate `wordpress:cli-*` image and is for local dev only (behind the `cli` profile). On production, use MySQL queries directly for DB operations. (The image does include the `curl` CLI — added for the container `HEALTHCHECK` and `scripts/healthcheck.sh` — but still not `wp`.)
 - **Table prefix** — Duplicator handles table prefixes automatically during import. Only becomes an issue if the MySQL volume is recreated (`docker compose down -v`) after a Duplicator import, as the Docker entrypoint regenerates wp-config.php with the default `wp_` prefix. Avoid resetting volumes after import.
 - **Windows has no `export` or Git Bash by default** — the sync-db-from-prod.sh script requires bash with `export`. Use `sync-db-from-prod.bat` on Windows, or do the steps manually (see "Manual DB Sync on Windows" below).
-- **NPM "Force SSL" causes redirect loops** — NPM terminates SSL and forwards HTTP to the container. The WordPress Docker image already handles `X-Forwarded-Proto`. Do NOT enable "Force SSL" in NPM — the built-in wp-config.php snippet handles this.
+- **Reverse-proxy "Force SSL" can cause redirect loops** — when the proxy terminates SSL and forwards HTTP to the container, the WordPress image already handles `X-Forwarded-Proto`. Don't enable "Force SSL" (e.g. in Nginx Proxy Manager) — the built-in wp-config.php snippet handles it.
 
 ## Manual DB Sync on Windows
 
@@ -145,20 +68,22 @@ Merged in production via `COMPOSE_FILE=docker-compose.yml:docker-compose.product
 The `wordpress` service is built from the repo `Dockerfile` (locally and on the server via `docker compose up --build`); only `mysql` and the `wpcli` helper use upstream images directly. `config/uploads.ini` is baked into the image, not bind-mounted.
 
 ### Container naming
-Production containers are named `${COMPOSE_PROJECT_NAME}-wordpress` and `${COMPOSE_PROJECT_NAME}-mysql`. This is how NPM routes to the correct site — each site has a unique `COMPOSE_PROJECT_NAME`.
+Production containers are named `${COMPOSE_PROJECT_NAME}-wordpress` and `${COMPOSE_PROJECT_NAME}-mysql`. This is how the reverse proxy routes to the correct site — each site has a unique `COMPOSE_PROJECT_NAME`.
 
 ### Network
-- Production connects to the external `nginx-proxy-network` (shared with NPM, allegro-it-services, DonorLink)
-- MySQL stays on the default internal network only (not exposed to proxy)
+- Production joins the reverse proxy's external network (default `nginx-proxy-network`)
+- MySQL stays on the default internal network only (not exposed to the proxy)
 
 ## Deployment
 
-- **Trigger**: Push to `master` branch (or manual workflow dispatch)
-- **Method**: GitHub Actions SSH into Hetzner server
-- **Server path**: `/opt/apps/<repo-name>`
+- **Trigger**: Push to `master` (or manual workflow dispatch)
+- **Method**: GitHub Actions SSHes into any Docker host
+- **Server path**: `DEPLOY_PATH` variable, default `/opt/apps/<repo-name>`
 - **Process**: git pull → docker compose up --build --force-recreate -d → HTTP health check (`scripts/healthcheck.sh`, probed inside the container)
 - **Rollback**: Automatic on failure (reverts to previous commit, rebuilds + recreates containers)
-- **GitHub Secrets required**: `HETZNER_HOST`, `HETZNER_SSH_KEY` (unique deploy key per repo)
+- **Secrets to activate**: `DEPLOY_HOST`, `DEPLOY_SSH_KEY` (a per-repo deploy key); optional `DEPLOY_USER` / `DEPLOY_PATH` variables (default `root` / `/opt/apps/<repo>`)
+- **Dormant until configured**: the deploy step runs only when `DEPLOY_HOST` is set, so a fresh clone (no secret) skips deploy and the job still succeeds — cloning never produces a red deploy.
+- **Reference setup**: Allegro IT runs these behind Nginx Proxy Manager on a Hetzner VPS; any Docker host + reverse proxy works the same way.
 
 ## Continuous Integration
 
@@ -182,21 +107,21 @@ Push a SemVer tag (`git tag v1.2.0 && git push origin v1.2.0`). `.github/workflo
 - **Community health**: `SECURITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, issue/PR templates, `CODEOWNERS`, `.editorconfig`.
 - All GitHub Actions are pinned to released versions and kept current by Dependabot.
 
-## Server Layout (Hetzner)
+## Server Layout (reference)
 
-All apps live under `/opt/apps/` on the same server:
+A simple, scalable layout: one directory per site under a common root (default `/opt/apps/<repo>`), each its own Compose project:
 ```
 /opt/apps/
-├── allegro-it-services/    (existing)
-├── DonorLink/              (existing)
-├── <wp-site-1>/            (new WordPress site)
-├── <wp-site-2>/            (new WordPress site)
-└── <wp-site-3>/            (new WordPress site)
+├── <wp-site-1>/
+├── <wp-site-2>/
+└── <wp-site-3>/
 ```
 
-Nginx Proxy Manager handles routing:
-- Each WordPress container joins `nginx-proxy-network`
-- NPM proxy host maps domain → `<compose-project-name>-wordpress:80`
+A reverse proxy handles TLS and routing:
+- Each WordPress container joins the proxy's external network (default `nginx-proxy-network`)
+- The proxy maps each domain → `<compose-project-name>-wordpress:80`
+
+(Allegro IT runs this with Nginx Proxy Manager on a Hetzner VPS.)
 
 ## What's Version Controlled
 

@@ -1,23 +1,16 @@
 #!/usr/bin/env bash
-# Run this once on the Hetzner server to set up a new WordPress site.
+# Provision a server for this site (run once on the target host).
 # Usage: ./scripts/setup-server.sh <site-name> <repo-url>
-# Example: ./scripts/setup-server.sh my-wp-site git@github-my-wp-site:jackwjensen/my-wp-site.git
+# Example: ./scripts/setup-server.sh my-site git@github.com:you/my-site.git
 #
-# IMPORTANT: Each repo needs its own SSH deploy key. Before running this script:
-# 1. Generate a key:  ssh-keygen -t ed25519 -C "github-deploy-<site-name>" -f /root/.ssh/deploy_<site-name> -N ""
-# 2. Add the public key as a deploy key on GitHub (Settings → Deploy keys, enable write access)
-# 3. Add the private key as HETZNER_SSH_KEY secret on GitHub (Settings → Secrets → Actions)
-# 4. Add HETZNER_HOST secret with the server IP
-# 5. Add SSH config alias:
-#      cat >> /root/.ssh/config << EOF
-#
-#      Host github-<site-name>
-#          HostName github.com
-#          User git
-#          IdentityFile /root/.ssh/deploy_<site-name>
-#          IdentitiesOnly yes
-#      EOF
-# 6. Then clone using the alias: git@github-<site-name>:jackwjensen/<site-name>.git
+# For GitHub Actions auto-deploy, configure these on the repo first:
+#   1. Create a per-repo SSH deploy key:
+#        ssh-keygen -t ed25519 -C "deploy-<site-name>" -f ~/.ssh/deploy_<site-name> -N ""
+#   2. Add the PUBLIC key as a GitHub deploy key (Settings → Deploy keys; allow write).
+#   3. Add the PRIVATE key as the DEPLOY_SSH_KEY repository secret.
+#   4. Add the DEPLOY_HOST secret (the server host/IP).
+# If one server hosts several repos, give each its own key plus an SSH config
+# alias so git selects the right one.
 
 set -euo pipefail
 

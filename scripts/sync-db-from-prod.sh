@@ -3,7 +3,7 @@
 # Usage: ./scripts/sync-db-from-prod.sh <site-name> [prod-domain] [local-url]
 # Example: ./scripts/sync-db-from-prod.sh my-wp-site example.com http://localhost:8080
 #
-# NOTE: This script requires the HETZNER_HOST env var and SSH access to the server.
+# NOTE: This script requires the DEPLOY_HOST env var and SSH access to the server.
 # On Windows, use sync-db-from-prod.bat instead, or run the manual steps from CLAUDE.md.
 #
 # CAVEAT: the URL search-replace below uses raw MySQL REPLACE(), which is NOT
@@ -20,7 +20,7 @@ DEV_DB_PASSWORD="WordPress_Dev123!"
 SITE_NAME="${1:?Usage: sync-db-from-prod.sh <site-name> [prod-domain] [local-url]}"
 PROD_DOMAIN="${2:-}"
 LOCAL_URL="${3:-http://localhost:8080}"
-SERVER="${HETZNER_HOST:?Set HETZNER_HOST env var}"
+SERVER="${DEPLOY_HOST:?Set DEPLOY_HOST env var}"
 REMOTE_DIR="/opt/apps/${SITE_NAME}"
 
 # Guard: a domain must look like a domain. The value is interpolated into SQL

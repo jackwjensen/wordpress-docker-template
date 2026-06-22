@@ -2,7 +2,7 @@
 setlocal
 REM Pull production database to local development (Windows).
 REM Usage: sync-db-from-prod.bat <site-name> [prod-domain] [local-url]
-REM Requires: HETZNER_HOST env var (set HETZNER_HOST=203.0.113.10) and SSH access.
+REM Requires: DEPLOY_HOST env var (set DEPLOY_HOST=203.0.113.10) and SSH access.
 REM Mirrors scripts/sync-db-from-prod.sh.
 REM
 REM CAVEAT: URL replacement uses raw MySQL REPLACE(), which is NOT
@@ -11,11 +11,11 @@ REM run `wp search-replace` from a host that has WP-CLI instead.
 
 if "%~1"=="" (
     echo Usage: sync-db-from-prod.bat ^<site-name^> [prod-domain] [local-url]
-    echo Requires the HETZNER_HOST env var to be set.
+    echo Requires the DEPLOY_HOST env var to be set.
     goto end
 )
-if "%HETZNER_HOST%"=="" (
-    echo ERROR: set HETZNER_HOST first, e.g.  set HETZNER_HOST=203.0.113.10
+if "%DEPLOY_HOST%"=="" (
+    echo ERROR: set DEPLOY_HOST first, e.g.  set DEPLOY_HOST=203.0.113.10
     goto end
 )
 
@@ -29,7 +29,7 @@ if not exist backups mkdir backups
 
 echo Step 1: Dumping production database...
 echo   (You may be prompted for your SSH passphrase)
-ssh root@%HETZNER_HOST% "cd /opt/apps/%SITE_NAME% && MYSQL_PWD=$(grep MYSQL_ROOT_PASSWORD .env | cut -d= -f2) docker compose exec -T -e MYSQL_PWD mysql mysqldump -uroot wordpress" > backups\prod_sync.sql
+ssh root@%DEPLOY_HOST% "cd /opt/apps/%SITE_NAME% && MYSQL_PWD=$(grep MYSQL_ROOT_PASSWORD .env | cut -d= -f2) docker compose exec -T -e MYSQL_PWD mysql mysqldump -uroot wordpress" > backups\prod_sync.sql
 if errorlevel 1 (
     echo ERROR: Failed to dump production database. Check SSH connection.
     goto end

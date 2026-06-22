@@ -6,6 +6,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- "Make it your own" guide: detach onto your own account, and/or track this repo as
+  an `upstream` remote to pull future template improvements.
+- Tasteful Allegro IT attribution and a soft "Need a hand?" CTA in the README.
+
+### Changed
+- Generalised the docs for public clone-and-own use: a vendor-neutral "deploy to any
+  Docker VPS behind a reverse proxy" guide (Allegro IT's Hetzner + Nginx Proxy
+  Manager setup kept as a labelled example), and renamed the deploy secrets to
+  `DEPLOY_HOST` / `DEPLOY_SSH_KEY` (optional `DEPLOY_USER` / `DEPLOY_PATH` variables).
+- The deploy workflow runs only when `DEPLOY_HOST` is configured, so a fresh clone
+  never produces a failing deploy; configuring the secret activates it.
+- CI's smoke-test job retries to ride out transient Docker Hub pull rate-limits on
+  shared runners.
+
 ## [1.0.0] - 2026-06-22
 
 ### Added
