@@ -6,22 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added
-- "Make it your own" guide: detach onto your own account, and/or track this repo as
-  an `upstream` remote to pull future template improvements.
-- Tasteful Allegro IT attribution and a soft "Need a hand?" CTA in the README.
-
-### Changed
-- Generalised the docs for public clone-and-own use: a vendor-neutral "deploy to any
-  Docker VPS behind a reverse proxy" guide (Allegro IT's Hetzner + Nginx Proxy
-  Manager setup kept as a labelled example), and renamed the deploy secrets to
-  `DEPLOY_HOST` / `DEPLOY_SSH_KEY` (optional `DEPLOY_USER` / `DEPLOY_PATH` variables).
-- The deploy workflow runs only when `DEPLOY_HOST` is configured, so a fresh clone
-  never produces a failing deploy; configuring the secret activates it.
-- CI's smoke-test job retries to ride out transient Docker Hub pull rate-limits on
-  shared runners.
-
 ## [1.0.0] - 2026-06-22
+
+First public release: a polished, clone-and-own WordPress Docker template. (The
+project was renamed from `wp_image` to `wordpress-docker-template` for this
+release.)
 
 ### Added
 - Thin `Dockerfile` (`FROM wordpress:7.0-php8.4-apache`) that bakes in the PHP
@@ -36,14 +25,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Dependabot (grouped, monthly) for the `docker` and `github-actions` ecosystems.
 - Community-health files: SECURITY, CONTRIBUTING, CODE_OF_CONDUCT, issue/PR
   templates, CODEOWNERS, and `.editorconfig`.
+- "Make it your own" guide: detach onto your own account, and/or track this repo
+  as an `upstream` remote to pull future template improvements.
+- Tasteful Allegro IT attribution and a soft "Need a hand?" CTA in the README.
 
 ### Changed
 - Upgraded the stack to **WordPress 7.0 + PHP 8.4** (from 6.7 + PHP 8.3); MySQL
   stays on **8.4 LTS**.
 - Production deploy now verifies WordPress **serves HTTP** instead of counting
   "running" containers, and rebuilds the image (`docker compose up --build`).
+- Generalised the docs for public clone-and-own use: a vendor-neutral "deploy to
+  any Docker VPS behind a reverse proxy" guide (Allegro IT's Hetzner + Nginx Proxy
+  Manager setup kept as a labelled example), with vendor-neutral deploy secrets
+  `DEPLOY_HOST` / `DEPLOY_SSH_KEY` (optional `DEPLOY_USER` / `DEPLOY_PATH`).
+- Deploy runs only when `DEPLOY_HOST` is configured, so a fresh clone never
+  produces a failing deploy; configuring the secret activates it.
 - Hardened the shell scripts (`set -euo pipefail`, quoting, `MYSQL_PWD` instead
   of passwords on the command line, `MSYS_NO_PATHCONV` in `dev.sh`).
+- CI and release smoke-test jobs retry to ride out transient Docker Hub pull
+  rate-limits on shared runners.
 - Pinned all GitHub Actions to current released versions.
 
 ### Fixed

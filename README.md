@@ -1,12 +1,12 @@
 # WordPress Docker Template
 
-[![CI](https://github.com/jackwjensen/wp_image/actions/workflows/ci.yml/badge.svg)](https://github.com/jackwjensen/wp_image/actions/workflows/ci.yml)
-[![Release](https://github.com/jackwjensen/wp_image/actions/workflows/release.yml/badge.svg)](https://github.com/jackwjensen/wp_image/actions/workflows/release.yml)
+[![CI](https://github.com/jackwjensen/wordpress-docker-template/actions/workflows/ci.yml/badge.svg)](https://github.com/jackwjensen/wordpress-docker-template/actions/workflows/ci.yml)
+[![Release](https://github.com/jackwjensen/wordpress-docker-template/actions/workflows/release.yml/badge.svg)](https://github.com/jackwjensen/wordpress-docker-template/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![WordPress 7.0](https://img.shields.io/badge/WordPress-7.0-21759B?logo=wordpress&logoColor=white)
 ![PHP 8.4](https://img.shields.io/badge/PHP-8.4-777BB4?logo=php&logoColor=white)
 ![MySQL 8.4 LTS](https://img.shields.io/badge/MySQL-8.4_LTS-4479A1?logo=mysql&logoColor=white)
-[![GHCR](https://img.shields.io/badge/ghcr.io-wp__image-2496ED?logo=docker&logoColor=white)](https://github.com/jackwjensen/wp_image/pkgs/container/wp_image)
+[![GHCR](https://img.shields.io/badge/ghcr.io-container-2496ED?logo=docker&logoColor=white)](https://github.com/jackwjensen/wordpress-docker-template/pkgs/container/wordpress-docker-template)
 
 **Clone it, run one command, and you have a full WordPress + MySQL development
 environment in Docker — ready to build a site on.** When you're ready, deploy it
@@ -40,7 +40,7 @@ Prerequisites: [Docker Desktop](https://www.docker.com/products/docker-desktop/)
 (or Docker Engine + the Compose v2 plugin) and Bash (Git Bash on Windows).
 
 ```bash
-git clone https://github.com/jackwjensen/wp_image.git my-site
+git clone https://github.com/jackwjensen/wordpress-docker-template.git my-site
 cd my-site
 cp .env.example .env          # set COMPOSE_PROJECT_NAME=my-site
 ./dev.sh up                   # Windows: dev.bat up
@@ -87,9 +87,9 @@ limits travel with the image. Local dev and production both build it; tagged
 releases publish it to GHCR:
 
 ```bash
-docker pull ghcr.io/jackwjensen/wp_image:latest
+docker pull ghcr.io/jackwjensen/wordpress-docker-template:latest
 # or pin a version
-docker pull ghcr.io/jackwjensen/wp_image:1.0.0
+docker pull ghcr.io/jackwjensen/wordpress-docker-template:1.0.0
 ```
 
 ## Development commands
@@ -213,7 +213,7 @@ Keep this repo as an `upstream` remote and merge template updates when you want
 them (CI, Docker, and tooling improvements — never your site content):
 
 ```bash
-git remote add upstream https://github.com/jackwjensen/wp_image.git
+git remote add upstream https://github.com/jackwjensen/wordpress-docker-template.git
 git fetch upstream
 git merge upstream/master        # or: git rebase upstream/master
 ```

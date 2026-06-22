@@ -21,9 +21,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.0
 
-      # Never publish an image that doesn't pass the smoke test.
+      # Never publish an image that doesn't pass the smoke test. Retry to ride
+      # out transient Docker Hub pull rate-limits on shared runners.
       - name: Smoke test before publishing
-        run: bash tests/smoke.sh
+        run: |
+          for attempt in 1 2 3; do
+            if bash tests/smoke.sh; then exit 0; fi
+            echo "::warning::smoke attempt $attempt failed (often a Docker Hub pull limit) — retrying after backoff"
+            sleep $((attempt * 20))
+          done
+          echo "::error::smoke test failed after 3 attempts"
+          exit 1
 
       - name: Log in to GHCR
         uses: docker/login-action@v4.2.0

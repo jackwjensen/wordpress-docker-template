@@ -2,7 +2,7 @@ services:
   wordpress:
     build:
       context: .
-    image: wp-image:local
+    image: wordpress-docker-template:local
     ports:
       - "8080:80"
     environment:

@@ -51,7 +51,7 @@ If the sync scripts don't work (SSH passphrase prompts, no bash), do it step by 
 
 ## Architecture
 
-- WordPress 7.0 + PHP 8.4 + Apache — a thin `Dockerfile` extends the official `wordpress:7.0-php8.4-apache` image and bakes in `config/uploads.ini` plus a container `HEALTHCHECK`. Local dev and production both build it; tagged releases publish it to GHCR (`ghcr.io/jackwjensen/wp_image`).
+- WordPress 7.0 + PHP 8.4 + Apache — a thin `Dockerfile` extends the official `wordpress:7.0-php8.4-apache` image and bakes in `config/uploads.ini` plus a container `HEALTHCHECK`. Local dev and production both build it; tagged releases publish it to GHCR (`ghcr.io/jackwjensen/wordpress-docker-template`).
 - MySQL 8.4 LTS database
 - WP-CLI available locally via `docker compose run --rm wpcli wp <command>` (uses `cli` profile, local dev only — NOT available in production)
 - CI builds + smoke-tests the image on every push/PR; a `v*` tag publishes it to GHCR (keyless, built-in `GITHUB_TOKEN`)
@@ -93,7 +93,7 @@ Production containers are named `${COMPOSE_PROJECT_NAME}-wordpress` and `${COMPO
 
 ## Releasing
 
-Push a SemVer tag (`git tag v1.2.0 && git push origin v1.2.0`). `.github/workflows/release.yml` smoke-tests, then builds and publishes the image to **GHCR** (`ghcr.io/jackwjensen/wp_image`, tags `1.2.0`/`1.2`/`1`/`latest`) using the built-in `GITHUB_TOKEN` — **keyless, no stored secret** — attaches a build-provenance attestation, and drafts a GitHub Release. The GHCR package must be made public once (Packages → wp_image → Package settings) for anonymous pulls.
+Push a SemVer tag (`git tag v1.2.0 && git push origin v1.2.0`). `.github/workflows/release.yml` smoke-tests, then builds and publishes the image to **GHCR** (`ghcr.io/jackwjensen/wordpress-docker-template`, tags `1.2.0`/`1.2`/`1`/`latest`) using the built-in `GITHUB_TOKEN` — **keyless, no stored secret** — attaches a build-provenance attestation, and drafts a GitHub Release. The GHCR package must be made public once (Packages → wordpress-docker-template → Package settings) for anonymous pulls.
 
 ## Testing
 

@@ -27,9 +27,9 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=5 \
 
 # OCI metadata. The release workflow injects version/revision labels via
 # docker/metadata-action; these are sensible defaults for local + CI builds.
-LABEL org.opencontainers.image.title="wp_image" \
+LABEL org.opencontainers.image.title="wordpress-docker-template" \
       org.opencontainers.image.description="Production-ready Docker WordPress (WordPress 7.0 + PHP 8.4) template by Allegro IT" \
       org.opencontainers.image.vendor="Allegro IT ApS" \
       org.opencontainers.image.url="https://allegroit.dk/" \
-      org.opencontainers.image.source="https://github.com/jackwjensen/wp_image" \
+      org.opencontainers.image.source="https://github.com/jackwjensen/wordpress-docker-template" \
       org.opencontainers.image.licenses="MIT"
