@@ -29,3 +29,6 @@ wp-content/debug.log
 
 # Node (if using build tools in themes)
 node_modules/
+
+# MSYS/Git Bash path-conversion ghost dirs (Windows safety net)
+*;C/

@@ -1,0 +1,23 @@
+version: 2
+updates:
+  # Base image (Dockerfile FROM) and image tags in the compose files.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      docker:
+        patterns: ["*"]
+    commit-message:
+      prefix: docker
+
+  # GitHub Actions used by the CI, deploy, and release workflows.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      github-actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci

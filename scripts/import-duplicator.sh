@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Import a Duplicator package into a running WordPress container.
 # Run this on the server after setup-server.sh and completing the initial WP install.
 #
@@ -14,23 +14,23 @@
 #     User: root
 #     Password: (from .env → MYSQL_ROOT_PASSWORD)
 
-set -e
+set -euo pipefail
 
 INSTALLER="${1:?Usage: import-duplicator.sh <installer.php> <archive.zip>}"
 ARCHIVE="${2:?Usage: import-duplicator.sh <installer.php> <archive.zip>}"
 
 if [ ! -f "$INSTALLER" ]; then
-  echo "Error: $INSTALLER not found"
+  echo "Error: $INSTALLER not found" >&2
   exit 1
 fi
 
 if [ ! -f "$ARCHIVE" ]; then
-  echo "Error: $ARCHIVE not found"
+  echo "Error: $ARCHIVE not found" >&2
   exit 1
 fi
 
 echo "Fixing wp-content permissions..."
-docker compose exec wordpress chown -R www-data:www-data /var/www/html/wp-content
+docker compose exec -T wordpress chown -R www-data:www-data /var/www/html/wp-content
 
 echo "Copying Duplicator files into WordPress container..."
 docker compose cp "$INSTALLER" wordpress:/var/www/html/
@@ -45,5 +45,6 @@ echo "Database settings for Duplicator:"
 echo "  Host:     mysql    (NOT localhost)"
 echo "  Name:     wordpress"
 echo "  User:     root"
-echo "  Password: $(grep MYSQL_ROOT_PASSWORD .env | cut -d= -f2)"
+echo "  Password: see MYSQL_ROOT_PASSWORD in $(pwd)/.env"
+echo "            (e.g. grep MYSQL_ROOT_PASSWORD .env)"
 echo ""

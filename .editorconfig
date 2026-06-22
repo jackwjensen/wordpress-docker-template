@@ -1,0 +1,17 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Windows batch files must keep CRLF line endings.
+[*.bat]
+end_of_line = crlf
+
+# Markdown: keep trailing whitespace (it can be a hard line break).
+[*.md]
+trim_trailing_whitespace = false

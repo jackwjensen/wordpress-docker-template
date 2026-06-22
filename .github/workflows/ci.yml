@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint & static checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - name: ShellCheck
+        run: shellcheck scripts/*.sh dev.sh tests/*.sh
+
+      - name: Hadolint (Dockerfile)
+        uses: hadolint/hadolint-action@v3.3.0
+        with:
+          dockerfile: Dockerfile
+
+      - name: Validate Compose config (base)
+        run: docker compose config -q
+
+      - name: Validate Compose config (production merge)
+        env:
+          COMPOSE_PROJECT_NAME: ci
+          MYSQL_ROOT_PASSWORD: ci-validate-only
+        run: docker compose -f docker-compose.yml -f docker-compose.production.yml config -q
+
+      - name: actionlint
+        uses: docker://rhysd/actionlint:latest
+        with:
+          args: -color
+
+      - name: Health-check regression test
+        run: bash tests/healthcheck.test.sh
+
+  build-and-smoke:
+    name: Build image & smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - name: Build image and run smoke test
+        run: bash tests/smoke.sh

@@ -1,6 +1,8 @@
 services:
   wordpress:
-    image: wordpress:6.7-php8.3-apache
+    build:
+      context: .
+    image: wp-image:local
     ports:
       - "8080:80"
     environment:
@@ -17,7 +19,6 @@ services:
       - ./wp-content/themes:/var/www/html/wp-content/themes
       - ./wp-content/plugins:/var/www/html/wp-content/plugins
       - wp-uploads:/var/www/html/wp-content/uploads
-      - ./config/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini
     depends_on:
       mysql:
         condition: service_healthy
@@ -33,7 +34,9 @@ services:
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p$$MYSQL_ROOT_PASSWORD"]
+      # Authenticate via MYSQL_PWD so the password never appears on the argv
+      # (avoids the "insecure password on the command line" warning).
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_ROOT_PASSWORD\" mysqladmin ping -h 127.0.0.1 -uroot --silent"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -41,7 +44,7 @@ services:
     restart: unless-stopped
 
   wpcli:
-    image: wordpress:cli-php8.3
+    image: wordpress:cli-php8.4
     depends_on:
       wordpress:
         condition: service_started

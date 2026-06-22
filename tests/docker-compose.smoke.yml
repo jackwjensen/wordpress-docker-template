@@ -1,0 +1,6 @@
+# Smoke-test overrides. Drops the host wp-content bind-mounts so running the test
+# never writes WordPress's default themes/plugins into the working tree — the
+# image and a throwaway container layer are all the smoke test needs.
+services:
+  wordpress:
+    volumes: !override []

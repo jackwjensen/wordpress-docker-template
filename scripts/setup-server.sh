@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Run this once on the Hetzner server to set up a new WordPress site.
 # Usage: ./scripts/setup-server.sh <site-name> <repo-url>
 # Example: ./scripts/setup-server.sh my-wp-site git@github-my-wp-site:jackwjensen/my-wp-site.git
@@ -19,14 +19,15 @@
 #      EOF
 # 6. Then clone using the alias: git@github-<site-name>:jackwjensen/<site-name>.git
 
-set -e
+set -euo pipefail
 
 SITE_NAME="${1:?Usage: setup-server.sh <site-name> <repo-url>}"
 REPO_URL="${2:?Usage: setup-server.sh <site-name> <repo-url>}"
 APP_DIR="/opt/apps/${SITE_NAME}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [ -d "$APP_DIR" ]; then
-  echo "Error: $APP_DIR already exists"
+  echo "Error: $APP_DIR already exists" >&2
   exit 1
 fi
 
@@ -34,8 +35,8 @@ fi
 git clone "$REPO_URL" "$APP_DIR"
 cd "$APP_DIR"
 
-# Generate a strong password
-MYSQL_PASSWORD=$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)
+# Generate a strong, shell-safe password (alphanumeric only)
+MYSQL_PASSWORD="$(openssl rand -base64 32 | tr -d '/+=' | head -c 32)"
 
 # Create production .env
 cat > .env <<EOF
@@ -44,21 +45,22 @@ COMPOSE_PROJECT_NAME=${SITE_NAME}
 MYSQL_ROOT_PASSWORD=${MYSQL_PASSWORD}
 EOF
 
-# Start containers
-echo "Starting containers..."
-docker compose up -d
+# Build the image and start containers
+echo "Building image and starting containers..."
+docker compose up --build -d
 
-# Wait for MySQL to be healthy
-echo "Waiting for MySQL..."
-sleep 10
+# Wait until WordPress actually serves HTTP (replaces a fixed sleep). Probes
+# inside the container because production publishes no host port.
+echo "Waiting for WordPress to come up..."
+bash "${SCRIPT_DIR}/healthcheck.sh" "http://localhost/" 30 5 wordpress
 
 # Fix wp-content permissions for plugin installs and Duplicator
-docker compose exec wordpress chown -R www-data:www-data /var/www/html/wp-content
+docker compose exec -T wordpress chown -R www-data:www-data /var/www/html/wp-content
 
 echo ""
 echo "=== Setup complete ==="
-echo "App directory: $APP_DIR"
-echo "MySQL password: $MYSQL_PASSWORD (saved in .env)"
+echo "App directory:  $APP_DIR"
+echo "MySQL password: saved in ${APP_DIR}/.env (MYSQL_ROOT_PASSWORD)"
 echo "Container name: ${SITE_NAME}-wordpress"
 echo ""
 echo "Next steps:"

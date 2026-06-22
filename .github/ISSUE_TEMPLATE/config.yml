@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Allegro IT
+    url: https://allegroit.dk/
+    about: Commercial support and project enquiries.
+  - name: Security report
+    url: https://github.com/jackwjensen/wp_image/security/advisories/new
+    about: Please report security vulnerabilities privately, not as public issues.

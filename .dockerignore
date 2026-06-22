@@ -1,9 +1,32 @@
+# Keep the build context small and free of secrets.
+# Only config/uploads.ini is COPYed by the Dockerfile.
+
+# Secrets — must never enter the build context
+.env
+.env.*
+!.env.example
+
+# VCS / CI / editor
 .git
 .github
 .vscode
 .idea
+
+# Docs (not needed in the image)
 *.md
+
+# Dev + ops tooling (not part of the runtime image)
+dev.bat
+dev.sh
+scripts/
+tests/
+docker-compose*.yml
+
+# Local data / artifacts
 backups/
 *.sql
 *.sql.gz
 node_modules/
+
+# MSYS path-conversion ghost dirs (Windows / Git Bash safety net)
+*;C/

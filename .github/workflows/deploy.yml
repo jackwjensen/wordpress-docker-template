@@ -5,12 +5,20 @@ on:
     branches: [master]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+# Never let two production deploys run at once; queue instead of cancelling.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to Hetzner
-        uses: appleboy/ssh-action@v1
+        uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.HETZNER_HOST }}
           username: root
@@ -21,12 +29,12 @@ jobs:
             APP_DIR="/opt/apps/${{ github.event.repository.name }}"
             cd "$APP_DIR"
 
-            # Rollback function
+            # Capture the current commit so we can roll back on failure.
             PREV_COMMIT=$(git rev-parse HEAD)
             rollback() {
-              echo "Deployment failed! Rolling back..."
+              echo "Deployment failed! Rolling back to $PREV_COMMIT..."
               git checkout "$PREV_COMMIT"
-              docker compose up --force-recreate -d
+              docker compose up --build --force-recreate -d
               echo "Rollback complete."
               exit 1
             }
@@ -38,18 +46,14 @@ jobs:
             # Prune old images
             docker image prune -f --filter "until=72h" || true
 
-            # Recreate containers (using official image, no build needed)
-            docker compose up --force-recreate -d
+            # Rebuild the image and recreate containers
+            docker compose up --build --force-recreate -d
 
-            # Wait for WordPress to start
-            echo "Waiting for WordPress to start..."
-            sleep 15
-
-            # Health check
-            RUNNING=$(docker compose ps --status running --format json | grep -c "running" || true)
-            if [ "$RUNNING" -lt 2 ]; then
-              echo "Health check failed: only $RUNNING containers running"
-              exit 1
-            fi
+            # Health check: verify WordPress actually SERVES HTTP, not merely that
+            # containers are "running" (a container can be up while WordPress
+            # returns 500 on a DB/PHP error). Probes inside the wordpress
+            # container because production publishes no host port. A non-zero
+            # exit trips the ERR trap above and rolls the deploy back.
+            bash scripts/healthcheck.sh "http://localhost/" 30 5 wordpress
 
             echo "Deployment successful!"
