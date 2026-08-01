@@ -17,7 +17,7 @@ jobs:
     name: Lint & static checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
 
       - name: ShellCheck
         run: shellcheck scripts/*.sh dev.sh tests/*.sh
@@ -48,7 +48,7 @@ jobs:
     name: Build image & smoke test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
 
       - name: Build image and run smoke test
         # Retry to ride out transient Docker Hub pull rate-limits on shared runners.
