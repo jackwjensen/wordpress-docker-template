@@ -81,7 +81,9 @@ Production containers are named `${COMPOSE_PROJECT_NAME}-wordpress` and `${COMPO
 - **Server path**: `DEPLOY_PATH` variable, default `/opt/apps/<repo-name>`
 - **Process**: git pull → docker compose up --build --force-recreate -d → HTTP health check (`scripts/healthcheck.sh`, probed inside the container)
 - **Rollback**: Automatic on failure (reverts to previous commit, rebuilds + recreates containers)
-- **Secrets to activate**: `DEPLOY_HOST`, `DEPLOY_SSH_KEY` (a per-repo deploy key); optional `DEPLOY_USER` / `DEPLOY_PATH` variables (default `root` / `/opt/apps/<repo>`)
+- **Secrets to activate**: `DEPLOY_HOST`, `DEPLOY_SSH_KEY` (a per-repo deploy key); optional `DEPLOY_USER` / `DEPLOY_PATH` / `DEPLOY_HOST_FINGERPRINT` variables (default `deploy` / `/opt/apps/<repo>` / unset)
+- **The deploy user defaults to `deploy`, not `root`** — deploying as root makes any compromise of the workflow, the key secret, or the third-party action a full host takeover. Note that docker-group membership is still root-*adjacent* (it can bind-mount `/` into a container), so this is one rung down from root, not least privilege.
+- **`DEPLOY_HOST_FINGERPRINT` must be discovered by testing, not by reading `ssh -v`.** The action downloads drone-ssh (Go `crypto/ssh`), whose host-key preference puts ECDSA above ed25519 — the reverse of OpenSSH. On a server offering both, the fingerprint a developer sees is not the one the deploy checks, and the mismatch error names no algorithm. Try `ssh-keyscan -t ecdsa` first.
 - **Dormant until configured**: the deploy step runs only when `DEPLOY_HOST` is set, so a fresh clone (no secret) skips deploy and the job still succeeds — cloning never produces a red deploy.
 - **Reference setup**: Allegro IT runs these behind Nginx Proxy Manager on a Hetzner VPS; any Docker host + reverse proxy works the same way.
 

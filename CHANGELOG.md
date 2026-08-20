@@ -6,6 +6,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- The deploy workflow's `DEPLOY_USER` now defaults to **`deploy`** instead of `root`.
+  Deploying as root means any compromise of the workflow, the key secret, or the
+  third-party SSH action is a full host takeover. Existing users who relied on the old
+  default must either create a `deploy` account (in the `docker` group, owning
+  `DEPLOY_PATH`) or set the `DEPLOY_USER` variable to `root` explicitly.
+
+### Added
+- Optional `DEPLOY_HOST_FINGERPRINT` variable pinning the server's SSH host key, so a
+  hijacked DNS record cannot present its own key and collect a credential with write
+  access to the server. Unset, the deploy behaves as before and skips verification.
+  Discover the value by testing rather than from `ssh -v`: the action uses a Go SSH
+  client that prefers ECDSA host keys where OpenSSH prefers ed25519.
+
 ## [1.0.0] - 2026-06-22
 
 First public release: a polished, clone-and-own WordPress Docker template. (The

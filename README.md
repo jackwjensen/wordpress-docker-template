@@ -133,8 +133,21 @@ SSH to any Docker host on push to `master`. To activate it:
    - `DEPLOY_HOST` — your server's host or IP
    - `DEPLOY_SSH_KEY` — a private SSH key the server accepts
 
-   (Optional **variables** `DEPLOY_USER` and `DEPLOY_PATH` default to `root` and
-   `/opt/apps/<repo>`.)
+   (Optional **variables** `DEPLOY_USER` and `DEPLOY_PATH` default to `deploy` and
+   `/opt/apps/<repo>`. Create that `deploy` account on your server, add it to the
+   `docker` group, and give it ownership of `DEPLOY_PATH` — or set `DEPLOY_USER` to
+   whatever account you use. It defaults to a non-root user on purpose: a CI key that
+   logs in as root turns any compromise of this workflow, the key, or the third-party
+   SSH action into a full host takeover.)
+
+   Also strongly recommended: set the variable `DEPLOY_HOST_FINGERPRINT` to your
+   server's SSH host key fingerprint. Left unset, the deploy trusts whatever answers
+   at `DEPLOY_HOST`. **Get the value by testing, not by reading it off `ssh -v`** —
+   this action uses a Go SSH client that prefers ECDSA host keys where OpenSSH prefers
+   ed25519, so on a server offering both, the fingerprint you see is usually not the
+   one the deploy will check. Try `ssh-keyscan -t ecdsa <host> | ssh-keygen -lf -`
+   first; if the deploy fails with `host key fingerprint mismatch`, try the other
+   types.
 2. On the server, run `./scripts/setup-server.sh <site-name> <repo-url>` once — it
    clones the repo, generates the DB password, builds the image, and starts the
    stack.

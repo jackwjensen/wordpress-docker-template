@@ -36,8 +36,25 @@ jobs:
         uses: appleboy/ssh-action@v1.2.5
         with:
           host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ vars.DEPLOY_USER || 'root' }}
+          # Defaults to a non-root `deploy` user. Give it docker-group membership and
+          # ownership of DEPLOY_PATH on your server, or set the DEPLOY_USER variable to
+          # whatever account you actually use. Deploying as root means any compromise of
+          # this workflow, the key secret, or the third-party action is a full host
+          # takeover; a `deploy` account in the docker group is one rung down from that
+          # (docker-group is still root-adjacent -- it can bind-mount / into a container).
+          username: ${{ vars.DEPLOY_USER || 'deploy' }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
+          # Optional but strongly recommended: pin your server's SSH host key so a
+          # hijacked DNS record cannot present its own and collect a key with write
+          # access to your server. Left empty, the action skips verification entirely.
+          #
+          # Get the value by TESTING, not by reading. This action downloads drone-ssh
+          # (Go crypto/ssh), whose host-key preference puts ECDSA above ed25519 -- the
+          # reverse of OpenSSH -- so if your server offers several host key types, the
+          # one `ssh -v` shows you is very likely NOT the one this action negotiates,
+          # and the deploy fails with `host key fingerprint mismatch`. Try the ECDSA
+          # value first:  ssh-keyscan -t ecdsa <host> | ssh-keygen -lf -
+          fingerprint: ${{ vars.DEPLOY_HOST_FINGERPRINT }}
           script_stop: true
           script: |
             set -e
