@@ -5,7 +5,7 @@
 # Extends the official WordPress runtime with our tuned PHP upload limits so the
 # image is self-contained — production and CI both build this, and tagged
 # releases publish it to GHCR. No host bind-mount is needed for the PHP config.
-FROM wordpress:7.0-php8.4-apache
+FROM wordpress:7.1-php8.4-apache
 
 # Ensure the curl CLI is present — it powers the container HEALTHCHECK below and
 # the deploy-time health probe (scripts/healthcheck.sh in "compose service"
