@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- The image `HEALTHCHECK` now uses exec (JSON) form, as Hadolint DL3025 requires
+  (flagged once the Hadolint action was bumped to 3.5.0); behaviour is unchanged.
+
 ## [1.0.0] - 2026-06-22
 
 First public release: a polished, clone-and-own WordPress Docker template. (The
