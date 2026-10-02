@@ -5,7 +5,7 @@
 # Extends the official WordPress runtime with our tuned PHP upload limits so the
 # image is self-contained — production and CI both build this, and tagged
 # releases publish it to GHCR. No host bind-mount is needed for the PHP config.
-FROM wordpress:7.0-php8.4-apache
+FROM wordpress:7.1-php8.4-apache
 
 # Ensure the curl CLI is present — it powers the container HEALTHCHECK below and
 # the deploy-time health probe (scripts/healthcheck.sh in "compose service"
@@ -30,7 +30,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=5 \
 # OCI metadata. The release workflow injects version/revision labels via
 # docker/metadata-action; these are sensible defaults for local + CI builds.
 LABEL org.opencontainers.image.title="wordpress-docker-template" \
-      org.opencontainers.image.description="Production-ready Docker WordPress (WordPress 7.0 + PHP 8.4) template by Allegro IT" \
+      org.opencontainers.image.description="Production-ready Docker WordPress (WordPress 7.1 + PHP 8.4) template by Allegro IT" \
       org.opencontainers.image.vendor="Allegro IT ApS" \
       org.opencontainers.image.url="https://allegroit.dk/" \
       org.opencontainers.image.source="https://github.com/jackwjensen/wordpress-docker-template" \

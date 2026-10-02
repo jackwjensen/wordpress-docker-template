@@ -1,6 +1,6 @@
 # WordPress Docker Template
 
-Claude context for this repo. It's a clone-and-own template for Dockerised WordPress sites: a thin image (WordPress 7.0 + PHP 8.4), MySQL 8.4 LTS, local dev via Docker Compose, CI + GHCR releases, and an optional SSH deploy to any Docker host. The user-facing guide is in `README.md`; this file is the working context for Claude.
+Claude context for this repo. It's a clone-and-own template for Dockerised WordPress sites: a thin image (WordPress 7.1 + PHP 8.4), MySQL 8.4 LTS, local dev via Docker Compose, CI + GHCR releases, and an optional SSH deploy to any Docker host. The user-facing guide is in `README.md`; this file is the working context for Claude.
 
 ## Using this template
 
@@ -51,7 +51,7 @@ If the sync scripts don't work (SSH passphrase prompts, no bash), do it step by 
 
 ## Architecture
 
-- WordPress 7.0 + PHP 8.4 + Apache — a thin `Dockerfile` extends the official `wordpress:7.0-php8.4-apache` image and bakes in `config/uploads.ini` plus a container `HEALTHCHECK`. Local dev and production both build it; tagged releases publish it to GHCR (`ghcr.io/jackwjensen/wordpress-docker-template`).
+- WordPress 7.1 + PHP 8.4 + Apache — a thin `Dockerfile` extends the official `wordpress:7.1-php8.4-apache` image and bakes in `config/uploads.ini` plus a container `HEALTHCHECK`. Local dev and production both build it; tagged releases publish it to GHCR (`ghcr.io/jackwjensen/wordpress-docker-template`).
 - MySQL 8.4 LTS database
 - WP-CLI available locally via `docker compose run --rm wpcli wp <command>` (uses `cli` profile, local dev only — NOT available in production)
 - CI builds + smoke-tests the image on every push/PR; a `v*` tag publishes it to GHCR (keyless, built-in `GITHUB_TOKEN`)

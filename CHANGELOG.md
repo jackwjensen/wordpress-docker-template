@@ -8,6 +8,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Upgraded the base image to **WordPress 7.1** (`wordpress:7.1-php8.4-apache`,
+  from 7.0); PHP 8.4 and MySQL 8.4 LTS are unchanged.
 - The image `HEALTHCHECK` now uses exec (JSON) form, as Hadolint DL3025 requires
   (flagged once the Hadolint action was bumped to 3.5.0); behaviour is unchanged.
 
