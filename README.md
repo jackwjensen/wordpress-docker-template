@@ -69,9 +69,10 @@ the environment-specific bits.
 | | Local (`docker-compose.yml`) | Production (`+ docker-compose.production.yml`) |
 | --- | --- | --- |
 | WordPress | Built from `Dockerfile`, port `8080:80`, debug on | Same image, no published port, debug off, `DISALLOW_FILE_EDIT` |
-| MySQL | Port `3306` published, dev password | No published port, password from `.env` |
+| MySQL | Port `127.0.0.1:3307` published (this machine only), dev password | No published port, password from `.env` |
 | Networking | Default bridge only | Also joins an external reverse-proxy network |
 | Routing | Direct to `localhost:8080` | Reverse proxy → `<project>-wordpress:80` |
+| Restart policy | None — runs only when started (dev ports are shared with other projects) | `unless-stopped` on every service |
 
 Production merges both files via
 `COMPOSE_FILE=docker-compose.yml:docker-compose.production.yml` in the server's

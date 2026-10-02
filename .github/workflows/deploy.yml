@@ -77,6 +77,14 @@ jobs:
             git pull origin master
             docker image prune -f --filter "until=72h" || true
 
+            # Refresh every image first. Without a pull the server keeps the first copy of
+            # each tag it ever downloaded, so the WordPress base and mysql:8.4 stop receiving
+            # the patches their tags exist to carry. --ignore-buildable skips the image this
+            # repo builds (pulling it would fail). The rollback above stays unpulled on
+            # purpose: it must not depend on the registry once the deploy has already failed.
+            docker compose pull --ignore-buildable
+            docker compose build --pull
+
             # Rebuild the image and recreate containers.
             docker compose up --build --force-recreate -d
 

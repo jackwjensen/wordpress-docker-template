@@ -60,8 +60,10 @@ If the sync scripts don't work (SSH passphrase prompts, no bash), do it step by 
 
 | File | Purpose |
 |------|---------|
-| `docker-compose.yml` | Base config + local dev (ports 8080, 3306 exposed, debug on) |
-| `docker-compose.production.yml` | Production overrides (no ports, joins `nginx-proxy-network`, debug off, `DISALLOW_FILE_EDIT`) |
+| `docker-compose.yml` | Base config + local dev (ports 8080 and `127.0.0.1:3307` per the dev port registry, debug on, **no `restart:` policy**) |
+| `docker-compose.production.yml` | Production overrides (no ports, joins `nginx-proxy-network`, debug off, `DISALLOW_FILE_EDIT`, `restart: unless-stopped` on every service) |
+
+**`restart:` belongs only in the production file** (engineering-standards `infrastructure.md`). Every local project shares the dev ports, so a local stack that restarts itself after a Docker Desktop restart takes them from whatever Jack is working on. Removed from the local file 2026-10-02 after the Ellengaard site, built from this template, inherited it.
 
 Merged in production via `COMPOSE_FILE=docker-compose.yml:docker-compose.production.yml` in the server's `.env`.
 
@@ -79,7 +81,7 @@ Production containers are named `${COMPOSE_PROJECT_NAME}-wordpress` and `${COMPO
 - **Trigger**: Push to `master` (or manual workflow dispatch)
 - **Method**: GitHub Actions SSHes into any Docker host
 - **Server path**: `DEPLOY_PATH` variable, default `/opt/apps/<repo-name>`
-- **Process**: git pull → docker compose up --build --force-recreate -d → HTTP health check (`scripts/healthcheck.sh`, probed inside the container)
+- **Process**: git pull → `docker compose pull --ignore-buildable` + `build --pull` (refreshes the WordPress base and `mysql:8.4`; without it the server keeps the first copy of each tag it ever downloaded) → docker compose up --build --force-recreate -d → HTTP health check (`scripts/healthcheck.sh`, probed inside the container)
 - **Rollback**: Automatic on failure (reverts to previous commit, rebuilds + recreates containers)
 - **Secrets to activate**: `DEPLOY_HOST`, `DEPLOY_SSH_KEY` (a per-repo deploy key); optional `DEPLOY_USER` / `DEPLOY_PATH` / `DEPLOY_HOST_FINGERPRINT` variables (default `deploy` / `/opt/apps/<repo>` / unset)
 - **The deploy user defaults to `deploy`, not `root`** — deploying as root makes any compromise of the workflow, the key secret, or the third-party action a full host takeover. Note that docker-group membership is still root-*adjacent* (it can bind-mount `/` into a container), so this is one rung down from root, not least privilege.

@@ -1,3 +1,7 @@
+# Local development. No service has a restart policy (engineering-standards rule
+# infrastructure.md): every local project shares the dev ports, so this stack runs only when
+# started and never comes back on its own after a Docker Desktop restart to take the ports from
+# another project. Production's restart: unless-stopped is in docker-compose.production.yml.
 services:
   wordpress:
     build:
@@ -22,7 +26,6 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
-    restart: unless-stopped
 
   mysql:
     image: mysql:8.4
@@ -30,7 +33,9 @@ services:
       MYSQL_ROOT_PASSWORD: WordPress_Dev123!
       MYSQL_DATABASE: wordpress
     ports:
-      - "3306:3306"
+      # Dev port registry (engineering-standards infrastructure.md): the database is always
+      # 127.0.0.1:3307 — loopback only, and never 3306, which belongs to a local MySQL install.
+      - "127.0.0.1:3307:3306"
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
@@ -41,7 +46,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-    restart: unless-stopped
 
   wpcli:
     image: wordpress:cli-php8.4
