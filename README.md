@@ -3,7 +3,7 @@
 [![CI](https://github.com/jackwjensen/wordpress-docker-template/actions/workflows/ci.yml/badge.svg)](https://github.com/jackwjensen/wordpress-docker-template/actions/workflows/ci.yml)
 [![Release](https://github.com/jackwjensen/wordpress-docker-template/actions/workflows/release.yml/badge.svg)](https://github.com/jackwjensen/wordpress-docker-template/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-![WordPress 7.0](https://img.shields.io/badge/WordPress-7.0-21759B?logo=wordpress&logoColor=white)
+![WordPress 7.1](https://img.shields.io/badge/WordPress-7.1-21759B?logo=wordpress&logoColor=white)
 ![PHP 8.4](https://img.shields.io/badge/PHP-8.4-777BB4?logo=php&logoColor=white)
 ![MySQL 8.4 LTS](https://img.shields.io/badge/MySQL-8.4_LTS-4479A1?logo=mysql&logoColor=white)
 [![GHCR](https://img.shields.io/badge/ghcr.io-container-2496ED?logo=docker&logoColor=white)](https://github.com/jackwjensen/wordpress-docker-template/pkgs/container/wordpress-docker-template)
@@ -13,7 +13,7 @@ environment in Docker — ready to build a site on.** When you're ready, deploy 
 to any Docker host, take it onto your own account, and (if you like) keep pulling
 improvements from upstream.
 
-Modern stack — **WordPress 7.0 · PHP 8.4 · MySQL 8.4 LTS** — with GitHub Actions
+Modern stack — **WordPress 7.1 · PHP 8.4 · MySQL 8.4 LTS** — with GitHub Actions
 CI, a published image on GHCR, and an optional one-push deploy with automatic
 rollback.
 
@@ -51,7 +51,7 @@ you're developing.
 
 ## Features
 
-- **WordPress 7.0 + PHP 8.4 + Apache** on a thin image built from the official
+- **WordPress 7.1 + PHP 8.4 + Apache** on a thin image built from the official
   upstream, with tuned PHP upload limits baked in.
 - **MySQL 8.4 LTS** with a real authenticated health check.
 - **CI on every push/PR** — ShellCheck, Hadolint, Compose validation, actionlint,

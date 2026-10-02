@@ -11,7 +11,7 @@ latest release.
 | latest `master` / newest release   | ✅        |
 | older tags                         | ❌        |
 
-The shipped stack tracks current, supported upstream versions (WordPress 7.0,
+The shipped stack tracks current, supported upstream versions (WordPress 7.1,
 PHP 8.4, MySQL 8.4 LTS), and Dependabot proposes updates monthly.
 
 ## Reporting a vulnerability
