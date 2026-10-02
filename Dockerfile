@@ -21,9 +21,11 @@ RUN apt-get update \
 COPY config/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
 
 # Report real health: a fresh install legitimately 302-redirects to the install
-# wizard (curl -f treats 2xx/3xx as success, 5xx as failure).
+# wizard (curl -f treats 2xx/3xx as success, 5xx as failure). Exec (JSON) form
+# per hadolint DL3025; the explicit `sh -c` keeps `|| exit 1`, which maps any
+# curl failure code onto Docker's "unhealthy" exit status 1.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=5 \
-    CMD curl -fsS -o /dev/null http://localhost/ || exit 1
+    CMD ["sh", "-c", "curl -fsS -o /dev/null http://localhost/ || exit 1"]
 
 # OCI metadata. The release workflow injects version/revision labels via
 # docker/metadata-action; these are sensible defaults for local + CI builds.

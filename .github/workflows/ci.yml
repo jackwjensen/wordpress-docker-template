@@ -17,13 +17,13 @@ jobs:
     name: Lint & static checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
 
       - name: ShellCheck
         run: shellcheck scripts/*.sh dev.sh tests/*.sh
 
       - name: Hadolint (Dockerfile)
-        uses: hadolint/hadolint-action@v3.3.0
+        uses: hadolint/hadolint-action@v3.5.0
         with:
           dockerfile: Dockerfile
 
@@ -48,7 +48,7 @@ jobs:
     name: Build image & smoke test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.0
+      - uses: actions/checkout@v7.0.1
 
       - name: Build image and run smoke test
         # Retry to ride out transient Docker Hub pull rate-limits on shared runners.
