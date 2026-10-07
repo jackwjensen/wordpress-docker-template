@@ -12,7 +12,7 @@ latest release.
 | older tags                         | ❌        |
 
 The shipped stack tracks current, supported upstream versions (WordPress 7.1,
-PHP 8.4, MySQL 8.4 LTS), and Dependabot proposes updates monthly.
+OpenLiteSpeed 1.9, PHP 8.5, MySQL 8.4 LTS), and Dependabot proposes updates monthly.
 
 ## Reporting a vulnerability
 

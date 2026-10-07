@@ -34,12 +34,16 @@ echo WordPress reset complete: http://localhost:8080
 goto end
 
 :logs
-docker compose logs -f wordpress
+rem OpenLiteSpeed writes its errors and PHP's to files in the container, not to docker logs.
+docker compose exec wordpress tail -n 50 -F /usr/local/lsws/logs/error.log /usr/local/lsws/logs/stderr.log
 goto end
 
 :cli
-shift
-docker compose run --rm wpcli %*
+rem WP-CLI inside the WordPress container, as the web server user. cmd's %* ignores shift
+rem and %1.. split on "=", so the arguments are %* with the leading "cli" cut off.
+set "WP_ARGS=%*"
+set "WP_ARGS=%WP_ARGS:*cli=%"
+docker compose exec -u www-data wordpress wp %WP_ARGS%
 goto end
 
 :backup

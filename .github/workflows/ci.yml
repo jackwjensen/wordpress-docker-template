@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
 
       - name: ShellCheck
-        run: shellcheck scripts/*.sh dev.sh tests/*.sh
+        run: shellcheck scripts/*.sh dev.sh tests/*.sh docker/openlitespeed/*.sh
 
       - name: Hadolint (Dockerfile)
         uses: hadolint/hadolint-action@v3.5.0

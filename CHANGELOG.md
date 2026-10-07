@@ -6,12 +6,59 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Upgrading a site already deployed from the Apache template
+
+The first deploy with OpenLiteSpeed starts on an empty `wp-html` volume: the old
+container's `wp-config.php` and `.htaccess` are gone (they lived in the container,
+not a volume). Before that deploy:
+
+1. If the site's table prefix is not `wp_` (common after a Duplicator import —
+   check `$table_prefix` in the running container's `wp-config.php`), add
+   `WORDPRESS_TABLE_PREFIX: <prefix>` to the `wordpress` environment in
+   `docker-compose.production.yml`. Without it WordPress sees an empty database and
+   shows the install wizard — and the deploy health check counts that as healthy.
+2. After the deploy, write the permalink rules again:
+   `docker compose exec -u www-data wordpress wp rewrite flush --hard`.
+3. Expect everyone to be logged out once (new secret keys); after that they are
+   kept across deploys.
+
 ### Changed
 
-- Upgraded the base image to **WordPress 7.1** (`wordpress:7.1-php8.4-apache`,
-  from 7.0); PHP 8.4 and MySQL 8.4 LTS are unchanged.
+- **Web server: OpenLiteSpeed instead of Apache** — one container built on
+  `litespeedtech/openlitespeed:1.9.2-lsphp85` (PHP 8.5, from 8.4), with WordPress
+  core from the official `wordpress:7.1-php8.5-fpm` image. The LiteSpeed Cache
+  plugin's page cache only works on a LiteSpeed server; README, "Page cache:
+  LiteSpeed Cache", covers setup, WooCommerce's REST API cache, and moving off
+  W3 Total Cache / WP Rocket. Carried over from the Ellengaard site's move.
+- `wp-config.php` is written at every container start from the `WORDPRESS_*`
+  variables (lsphp cannot read the environment), keeping the secret keys and the
+  table prefix.
+- WordPress core, `wp-config.php` and `.htaccess` live in a new `wp-html` volume;
+  the entrypoint upgrades core from a newer image and never downgrades it.
+- Local dev publishes `8080:8080` (OpenLiteSpeed listens on 8080 as well as 80),
+  so WordPress's loopback requests reach the container.
+- WP-CLI is built into the image (`dev.sh cli <command>`, also in production);
+  the separate `wpcli` service is gone.
+- `dev.sh logs` follows OpenLiteSpeed's log files.
+- Local MySQL is published on `127.0.0.1:3307` (was `3306` on every interface),
+  and the local stack has no restart policy any more — Allegro IT's dev port
+  registry. Production is unchanged: no published ports, `restart: unless-stopped`.
+- `tests/smoke.sh` runs as its own Compose project with no published ports, and
+  also checks the page cache, permalinks via `.htaccess`, restarts and core sync.
+- Upgraded the base image to **WordPress 7.1** (from 7.0); MySQL 8.4 LTS is
+  unchanged.
 - The image `HEALTHCHECK` now uses exec (JSON) form, as Hadolint DL3025 requires
   (flagged once the Hadolint action was bumped to 3.5.0); behaviour is unchanged.
+
+### Fixed
+
+- `WORDPRESS_DEBUG: "false"` in production turned `WP_DEBUG` **on** (the official
+  image treats any non-empty value as true); it is now parsed as a boolean.
+- A deploy (`--force-recreate`) no longer logs everyone out: the secret keys used
+  to be regenerated with every new container.
+- `tests/smoke.sh` ran under the dev stack's project name, so its closing
+  `down -v` deleted the local development database.
+- `dev.bat cli` passed the word `cli` on to WP-CLI.
 
 ## [1.0.0] - 2026-06-22
 

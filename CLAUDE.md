@@ -1,6 +1,6 @@
 # WordPress Docker Template
 
-Claude context for this repo. It's a clone-and-own template for Dockerised WordPress sites: a thin image (WordPress 7.1 + PHP 8.4), MySQL 8.4 LTS, local dev via Docker Compose, CI + GHCR releases, and an optional SSH deploy to any Docker host. The user-facing guide is in `README.md`; this file is the working context for Claude.
+Claude context for this repo. It's a clone-and-own template for Dockerised WordPress sites: one OpenLiteSpeed container (WordPress 7.1 + lsphp 8.5, ready for LiteSpeed Cache), MySQL 8.4 LTS, local dev via Docker Compose, CI + GHCR releases, and an optional SSH deploy to any Docker host. The user-facing guide is in `README.md`; this file is the working context for Claude.
 
 ## Using this template
 
@@ -19,17 +19,23 @@ Conventions worth knowing:
 ## Important Gotchas
 
 - **DB host is `mysql`, not `localhost`** — inside Docker, each container has its own network. `localhost` inside the WordPress container refers to itself. The MySQL container is reachable via Docker DNS as `mysql` (the service name from docker-compose.yml).
-- **Reverse-proxy target is port 80, not 8080** — Apache inside the WordPress container listens on port 80. Port 8080 is only the host mapping used in local dev.
-- **Duplicator files go INSIDE the container** — files placed on the server filesystem aren't served by Apache. Use `docker compose cp` or the `import-duplicator.sh` script.
-- **wp-content permissions** — the container runs Apache as `www-data`. After any file operations, fix ownership: `docker compose exec wordpress chown -R www-data:www-data /var/www/html/wp-content`
+- **Reverse-proxy target is port 80, not 8080** — OpenLiteSpeed's production listener is :80. It also listens on :8080, which local dev publishes as `8080:8080` so WordPress's loopback to `http://localhost:8080` (WP-Cron, Site Health) reaches the same container.
+- **lsphp cannot see the container's environment** — `getenv()` returns false under LSAPI (tested on Ellengaard, 2026-10-07), so the official image's runtime-`getenv` `wp-config.php` cannot work. `docker/openlitespeed/make-wp-config.php` writes `wp-config.php` with literal values from the `WORDPRESS_*` variables at **every container start**, keeping the existing secret keys and table prefix. Never edit `wp-config.php` in the container — change the compose files and restart. `WORDPRESS_DEBUG` is parsed as a boolean (`"false"` is off — the official image treated any non-empty value as on).
+- **Permalinks live in `.htaccess`** — OpenLiteSpeed reads it (`rewrite { enable 1; autoLoadHtaccess 1 }` in `vhconf.conf`). WP-CLI runs outside a web request, so WordPress can't tell the server reads `.htaccess`; `/etc/wp-cli/config.yml` (`apache_modules: [mod_rewrite]`, via `WP_CLI_CONFIG_PATH`) makes `wp rewrite flush --hard` write the rules.
+- **Core, `wp-config.php` and `.htaccess` live in the `wp-html` volume** — so a deploy keeps logins, permalinks and LiteSpeed Cache's rules. The entrypoint copies core from the image into an empty volume, and replaces core's files (never `wp-content`, `wp-config.php`, `.htaccess`) when the image's WordPress is newer than the volume's; it never downgrades. So a Dependabot base-image bump still updates core on deploy.
+- **OpenLiteSpeed logs are files, not `docker compose logs`** — `/usr/local/lsws/logs/` (`error.log`, `access.log`, `stderr.log` = PHP's errors). `dev.sh logs` tails them.
+- **LiteSpeed Cache's page cache needs a LiteSpeed server** — the plugin only sends `X-LiteSpeed-Cache-Control` headers; the server's cache module (`module cache` in `httpd_config.conf`) does the caching and sets `X-LSCACHE` (`on,crawler`) in `$_SERVER`, which tells the plugin it may cache. nginx and Apache ignore the headers. On WooCommerce shops, **"Cache REST API" must be off** (`wp litespeed-option set cache-rest 0`) — on by default, it served the Store API cart from the cache (Ellengaard, 2026-10-07).
+- **No HTTPS listener and no http→https redirect locally, ever** — port 8080 is shared by every local project, and a redirect on it is remembered by the browser for all of them.
+- **Duplicator files go INSIDE the container** — files placed on the server filesystem aren't served by OpenLiteSpeed. Use `docker compose cp` or the `import-duplicator.sh` script.
+- **wp-content permissions** — the container runs OpenLiteSpeed and lsphp as `www-data`. After any file operations, fix ownership: `docker compose exec wordpress chown -R www-data:www-data /var/www/html/wp-content`
 - **Uploads subdirectories** — after a fresh DB import, plugins may expect subdirectories under `wp-content/uploads/` that don't exist in the volume. Fix with: `docker compose exec wordpress chown -R www-data:www-data /var/www/html/wp-content/uploads` (the plugin will create its subdirectory on next request once permissions are correct).
 - **WordPress install wizard must be completed first** — on a fresh container, WordPress shows its install wizard before any other URL works. Complete it with throwaway values before running Duplicator.
 - **GitHub deploy keys are unique per repo** — the same SSH public key cannot be added to multiple repos. Use SSH config host aliases to map each repo to its own key.
 - **Production .env is critical** — without it, containers start in dev mode (ports exposed, not on the proxy network). The `setup-server.sh` script creates this automatically.
-- **WP-CLI is NOT in the WordPress container** — the official `wordpress:` image does not include `wp`. The `wpcli` service in docker-compose.yml uses a separate `wordpress:cli-*` image and is for local dev only (behind the `cli` profile). On production, use MySQL queries directly for DB operations. (The image does include the `curl` CLI — added for the container `HEALTHCHECK` and `scripts/healthcheck.sh` — but still not `wp`.)
-- **Table prefix** — Duplicator handles table prefixes automatically during import. Only becomes an issue if the MySQL volume is recreated (`docker compose down -v`) after a Duplicator import, as the Docker entrypoint regenerates wp-config.php with the default `wp_` prefix. Avoid resetting volumes after import.
+- **WP-CLI IS in the WordPress image** (since the OpenLiteSpeed switch) — pinned and checksum-verified, behind a `wp` wrapper that runs it on lsphp's CLI with PHP 8.5 deprecation notices hidden. Run it as the web server user: `docker compose exec -u www-data wordpress wp <command>` (locally `dev.sh cli <command>`), in production too. There is no separate `wpcli` service any more.
+- **Table prefix** — Duplicator writes its own `wp-config.php` with the imported site's prefix; the generator keeps that prefix at every restart. `WORDPRESS_TABLE_PREFIX` overrides it. Only `docker compose down -v` (which wipes the `wp-html` volume) loses it — avoid resetting volumes after an import.
 - **Windows has no `export` or Git Bash by default** — the sync-db-from-prod.sh script requires bash with `export`. Use `sync-db-from-prod.bat` on Windows, or do the steps manually (see "Manual DB Sync on Windows" below).
-- **Reverse-proxy "Force SSL" can cause redirect loops** — when the proxy terminates SSL and forwards HTTP to the container, the WordPress image already handles `X-Forwarded-Proto`. Don't enable "Force SSL" (e.g. in Nginx Proxy Manager) — the built-in wp-config.php snippet handles it.
+- **Reverse-proxy "Force SSL" can cause redirect loops** — when the proxy terminates SSL and forwards HTTP to the container, the generated `wp-config.php` already turns `X-Forwarded-Proto: https` into `$_SERVER['HTTPS']`. Don't enable "Force SSL" (e.g. in Nginx Proxy Manager) for the upstream.
 
 ## Manual DB Sync on Windows
 
@@ -51,21 +57,23 @@ If the sync scripts don't work (SSH passphrase prompts, no bash), do it step by 
 
 ## Architecture
 
-- WordPress 7.1 + PHP 8.4 + Apache — a thin `Dockerfile` extends the official `wordpress:7.1-php8.4-apache` image and bakes in `config/uploads.ini` plus a container `HEALTHCHECK`. Local dev and production both build it; tagged releases publish it to GHCR (`ghcr.io/jackwjensen/wordpress-docker-template`).
+- **OpenLiteSpeed + lsphp 8.5, one container** (Jack, 2026-10-07: the WordPress sites Allegro IT hosts run OpenLiteSpeed + the LiteSpeed Cache plugin; he has bad experiences with W3 Total Cache and WP Rocket). Carried over from Ellengaard (`ellengaard-dk` commit `20b8a09`), which moved from nginx + PHP-FPM the same day; this template moved from Apache. `Dockerfile` = `litespeedtech/openlitespeed:1.9.2-lsphp85` (Ubuntu 26.04, PHP 8.5.9; extensions a superset of the official image's except `pdo_sqlite`/`sqlite3`) + curl + pinned WP-CLI + `config/uploads.ini` (as `mods-available/zz-uploads.ini`, lsphp's ini scan dir); WordPress core comes from the official `wordpress:7.1-php8.5-fpm` image (multi-stage `core`, with `wp-config-docker.php` removed). `docker/openlitespeed/` = server config (`httpd_config.conf`: `www-data`, `disableWebAdmin 1`, :8080 + :80 plain HTTP, the cache module), the vhost (`vhconf.conf`: `.htaccess` rewrites), `entrypoint.sh` (core install/upgrade → `make-wp-config.php` → the base image's `/entrypoint.sh`, which starts `lswsctrl`, runs `"$@"`, then loops), `wp-cli.yml`, `wp.sh`. `php` on the PATH is lsphp's CLI. Tagged releases publish the image to GHCR (`ghcr.io/jackwjensen/wordpress-docker-template`).
 - MySQL 8.4 LTS database
-- WP-CLI available locally via `docker compose run --rm wpcli wp <command>` (uses `cli` profile, local dev only — NOT available in production)
+- WP-CLI in the image: `dev.sh cli <command>` locally, `docker compose exec -u www-data wordpress wp <command>` anywhere
 - CI builds + smoke-tests the image on every push/PR; a `v*` tag publishes it to GHCR (keyless, built-in `GITHUB_TOKEN`)
 
 ## Docker Compose Structure
 
 | File | Purpose |
 |------|---------|
-| `docker-compose.yml` | Base config + local dev (ports 8080, 3306 exposed, debug on) |
-| `docker-compose.production.yml` | Production overrides (no ports, joins `nginx-proxy-network`, debug off, `DISALLOW_FILE_EDIT`) |
+| `docker-compose.yml` | Base config + local dev (ports 8080:8080 and `127.0.0.1:3307` for MySQL, debug on, `wp-html` volume, **no `restart:`**) |
+| `docker-compose.production.yml` | Production overrides (no ports, joins `nginx-proxy-network`, debug off, `DISALLOW_FILE_EDIT`, `restart: unless-stopped` on every service) |
+
+Local ports follow the Allegro IT dev port registry (engineering-standards pack, `claude\rules\infrastructure.md`): 8080 the site, `127.0.0.1:3307` the database — never 3306, never the short `"3307:3306"` form (that binds every interface). All local projects share these numbers and only one runs at a time, so the base file has **no restart policy**: a self-restarting stack would come back after a Docker Desktop restart and hold the ports against the next project. `restart:` belongs in the production overlay only, on every service; both overlays' services also need `ports: !override []` (Compose merges `ports`).
 
 Merged in production via `COMPOSE_FILE=docker-compose.yml:docker-compose.production.yml` in the server's `.env`.
 
-The `wordpress` service is built from the repo `Dockerfile` (locally and on the server via `docker compose up --build`); only `mysql` and the `wpcli` helper use upstream images directly. `config/uploads.ini` is baked into the image, not bind-mounted.
+The `wordpress` service is built from the repo `Dockerfile` (locally and on the server via `docker compose up --build`); only `mysql` uses an upstream image directly. `config/uploads.ini` is baked into the image, not bind-mounted. Both files set `WP_CACHE` true (for LiteSpeed Cache; harmless without it).
 
 ### Container naming
 Production containers are named `${COMPOSE_PROJECT_NAME}-wordpress` and `${COMPOSE_PROJECT_NAME}-mysql`. This is how the reverse proxy routes to the correct site — each site has a unique `COMPOSE_PROJECT_NAME`.
@@ -88,8 +96,8 @@ Production containers are named `${COMPOSE_PROJECT_NAME}-wordpress` and `${COMPO
 ## Continuous Integration
 
 `.github/workflows/ci.yml` runs on every push and pull request:
-- **lint**: ShellCheck (scripts, `dev.sh`, tests), Hadolint (`Dockerfile`), `docker compose config` validation (base + production merge), actionlint, and the health-check regression test.
-- **build-and-smoke**: builds the image and runs `tests/smoke.sh` (WordPress serves HTTP, the baked-in upload limit is active, MySQL is reachable).
+- **lint**: ShellCheck (scripts, `dev.sh`, tests, `docker/openlitespeed/*.sh`), Hadolint (`Dockerfile`), `docker compose config` validation (base + production merge), actionlint, and the health-check regression test.
+- **build-and-smoke**: builds the image and runs `tests/smoke.sh` (see Testing).
 
 ## Releasing
 
@@ -97,7 +105,7 @@ Push a SemVer tag (`git tag v1.2.0 && git push origin v1.2.0`). `.github/workflo
 
 ## Testing
 
-- `tests/smoke.sh` — end-to-end: build + up + assert HTTP / upload-limit / DB reachability.
+- `tests/smoke.sh` — end-to-end: build + up, then assert `Server: LiteSpeed` on :8080 and :80, the upload limit (CLI and lsphp), `X-LSCACHE` + a real `X-LiteSpeed-Cache: hit`, a WP-CLI install against MySQL, a pretty permalink through `.htaccess`, salts + an imported table prefix surviving a restart, `WORDPRESS_DEBUG=false` → off, and core upgraded from the image but never downgraded. Runs as Compose project `wordpress-smoke` with no published ports (probes inside the container via `COMPOSE_PROJECT_NAME`/`COMPOSE_FILE`), so it never deletes the dev stack's volumes and never needs host port 8080 — safe to run locally while another project holds 8080.
 - `tests/healthcheck.test.sh` — regression test proving `scripts/healthcheck.sh` fails when WordPress is not serving (the old "count running containers" check did not). Fast; no Docker needed.
 - `scripts/healthcheck.sh <url> [retries] [delay] [compose-service]` — the single health probe shared by the smoke test, the regression test, the deploy workflow, and `setup-server.sh`. The 4th arg curls *inside* a compose service (used in production, which publishes no host port).
 
@@ -134,6 +142,7 @@ A reverse proxy handles TLS and routing:
 | `.env` | No | Contains passwords, created per environment |
 | `backups/` | No | Local DB dumps |
 | `Dockerfile` | Yes | Builds the WordPress image |
+| `docker/openlitespeed/` | Yes | OpenLiteSpeed server + vhost config, entrypoint, wp-config.php generator, WP-CLI config |
 | `tests/` | Yes | Smoke + regression tests |
 | `.github/` | Yes | CI/deploy/release workflows, Dependabot, templates |
 
@@ -170,7 +179,7 @@ global $wpdb;
 Key rules for deploy migrations:
 - **Must be idempotent** — safe to re-run on every deploy (use conditional checks or DELETE+INSERT patterns).
 - **Polylang requires `$_SERVER['HTTP_HOST']`** — without it, Polylang throws a fatal error. Always set it before `require wp-load.php`.
-- **WP-CLI is NOT available in the WordPress container** — the official `wordpress:` image doesn't include `wp`. Use direct PHP/MySQL instead.
+- **WP-CLI is in the image now** — a deploy step can also run `docker compose exec -T -u www-data wordpress wp eval-file wp-content/themes/<theme>/migrate.php`, which bootstraps WordPress for you.
 
 ## Working with Elementor
 
@@ -282,8 +291,9 @@ Polylang requires `$_SERVER['HTTP_HOST']` and `$_SERVER['REQUEST_URI']` to be se
 | `dev.bat up` | Start containers |
 | `dev.bat down` | Stop containers |
 | `dev.bat reset` | Destroy volumes and restart fresh |
-| `dev.bat logs` | Follow WordPress logs |
-| `dev.bat cli wp plugin list` | Run WP-CLI commands |
+| `dev.bat logs` | Follow OpenLiteSpeed's error log and PHP's errors |
+| `dev.bat cli plugin list` | Run WP-CLI commands (in the container, as `www-data`) |
+| `dev.bat cli litespeed-purge all` | Purge LiteSpeed Cache's page cache |
 | `dev.bat backup` | Dump DB to `backups/` |
 | `dev.bat restore backups/file.sql` | Restore DB from dump |
 
@@ -291,7 +301,13 @@ Polylang requires `$_SERVER['HTTP_HOST']` and `$_SERVER['REQUEST_URI']` to be se
 
 | File | Purpose |
 |------|---------|
-| `Dockerfile` | Builds the WordPress image (official base + uploads.ini + HEALTHCHECK) |
+| `Dockerfile` | Builds the WordPress image (OpenLiteSpeed + lsphp 8.5, core from the official image, WP-CLI, uploads.ini, HEALTHCHECK) |
+| `docker/openlitespeed/httpd_config.conf` | OpenLiteSpeed server config (www-data, no web admin, :8080 + :80, cache module) |
+| `docker/openlitespeed/vhconf.conf` | The virtual host (`.htaccess` rewrites, dotfiles hidden) |
+| `docker/openlitespeed/entrypoint.sh` | Container start: core install/upgrade, wp-config.php, then OpenLiteSpeed |
+| `docker/openlitespeed/make-wp-config.php` | Writes wp-config.php from `WORDPRESS_*` (keeps salts + table prefix) |
+| `docker/openlitespeed/wp-cli.yml`, `wp.sh` | WP-CLI config (`mod_rewrite` → `.htaccess`) and the `wp` wrapper |
+| `tests/docker-compose.smoke.yml` | Smoke-test overrides (no volumes, no published ports) |
 | `docker-compose.yml` | Base + local dev config |
 | `docker-compose.production.yml` | Production overrides (no ports, nginx-proxy-network) |
 | `.env.example` | Template for `.env` |

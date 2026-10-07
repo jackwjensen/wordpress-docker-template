@@ -13,6 +13,13 @@
 #     Name: wordpress
 #     User: root
 #     Password: (from .env → MYSQL_ROOT_PASSWORD)
+# - Duplicator writes its own wp-config.php. The container rewrites it from the compose
+#   files at every start, keeping the secret keys and the imported site's table prefix
+#   (docker/openlitespeed/make-wp-config.php) — anything else Duplicator put there is
+#   dropped. Put lasting settings in WORDPRESS_CONFIG_EXTRA.
+# - After the import, re-save Settings → Permalinks (or run
+#   `docker compose exec -u www-data wordpress wp rewrite flush --hard`) so .htaccess
+#   gets the permalink rules OpenLiteSpeed reads.
 
 set -euo pipefail
 

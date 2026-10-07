@@ -6,8 +6,9 @@ REM Requires: DEPLOY_HOST env var (set DEPLOY_HOST=203.0.113.10) and SSH access.
 REM Mirrors scripts/sync-db-from-prod.sh.
 REM
 REM CAVEAT: URL replacement uses raw MySQL REPLACE(), which is NOT
-REM serialization-aware. For sites with heavy serialized option/meta data,
-REM run `wp search-replace` from a host that has WP-CLI instead.
+REM serialization-aware. For sites with heavy serialized option/meta data, skip
+REM the prod-domain argument and use WP-CLI in the image instead:
+REM   dev.bat cli search-replace https://example.com http://localhost:8080 --all-tables
 
 if "%~1"=="" (
     echo Usage: sync-db-from-prod.bat ^<site-name^> [prod-domain] [local-url]

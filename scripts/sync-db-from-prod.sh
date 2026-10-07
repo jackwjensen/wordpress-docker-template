@@ -7,10 +7,11 @@
 # On Windows, use sync-db-from-prod.bat instead, or run the manual steps from CLAUDE.md.
 #
 # CAVEAT: the URL search-replace below uses raw MySQL REPLACE(), which is NOT
-# serialization-aware (WP-CLI is not available inside the container). If a plugin
-# stores serialized data that embeds the domain and the replacement changes the
-# string length, that row can be corrupted. For sites with heavy serialized
-# option/meta data, run `wp search-replace` from a host that has WP-CLI instead.
+# serialization-aware. If a plugin stores serialized data that embeds the domain
+# and the replacement changes the string length, that row can be corrupted. For
+# sites with heavy serialized option/meta data, skip the prod-domain argument and
+# use WP-CLI in the image instead:
+#   ./dev.sh cli search-replace 'https://example.com' 'http://localhost:8080' --all-tables
 
 set -euo pipefail
 

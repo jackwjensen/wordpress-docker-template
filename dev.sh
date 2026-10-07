@@ -23,11 +23,13 @@ case "${1:-up}" in
     echo "WordPress reset complete: http://localhost:8080"
     ;;
   logs)
-    docker compose logs -f wordpress
+    # OpenLiteSpeed writes its errors and PHP's to files in the container, not to docker logs.
+    docker compose exec wordpress tail -n 50 -F /usr/local/lsws/logs/error.log /usr/local/lsws/logs/stderr.log
     ;;
   cli)
     shift
-    docker compose run --rm wpcli "$@"
+    # WP-CLI inside the WordPress container, as the web server user.
+    docker compose exec -u www-data wordpress wp "$@"
     ;;
   backup)
     echo "Backing up database..."

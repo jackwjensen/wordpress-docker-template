@@ -1,0 +1,5 @@
+# WP-CLI runs outside a web request, so WordPress cannot see that OpenLiteSpeed reads .htaccess.
+# Declaring mod_rewrite lets `wp rewrite flush --hard` write the permalink rules there, exactly
+# as saving Settings → Permalinks in the admin does.
+apache_modules:
+  - mod_rewrite

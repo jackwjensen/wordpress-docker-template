@@ -1,5 +1,5 @@
 # Keep the build context small and free of secrets.
-# Only config/uploads.ini is COPYed by the Dockerfile.
+# Only config/uploads.ini and docker/openlitespeed/ are COPYed by the Dockerfile.
 
 # Secrets — must never enter the build context
 .env

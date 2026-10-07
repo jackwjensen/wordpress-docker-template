@@ -1,5 +1,6 @@
 services:
   wordpress:
+    # The reverse proxy forwards to <project>-wordpress:80; OpenLiteSpeed serves :80 itself.
     container_name: ${COMPOSE_PROJECT_NAME}-wordpress
     ports: !override []
     environment:
@@ -13,11 +14,7 @@ services:
         define('WP_DEBUG_DISPLAY', false);
         define('DISALLOW_FILE_EDIT', true);
         define('WP_AUTO_UPDATE_CORE', false);
-    volumes:
-      - ./wp-content/themes:/var/www/html/wp-content/themes
-      - ./wp-content/plugins:/var/www/html/wp-content/plugins
-      - wp-uploads:/var/www/html/wp-content/uploads
-      - ./config/uploads.ini:/usr/local/etc/php/conf.d/uploads.ini
+        define('WP_CACHE', true);
     networks:
       - default
       - nginx-proxy-network

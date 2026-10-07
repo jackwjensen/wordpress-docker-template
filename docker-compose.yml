@@ -1,28 +1,42 @@
+# Local development. Ports follow the Allegro IT dev port registry (engineering-standards,
+# infrastructure.md): 8080 the site, 127.0.0.1:3307 the database. Every local project shares
+# those numbers and only one runs at a time, so no service here has a restart policy: the stack
+# runs only when started and never comes back on its own after a Docker Desktop restart to take
+# the ports from another project. Production's restart: unless-stopped lives in
+# docker-compose.production.yml, on every service.
 services:
+  # OpenLiteSpeed + lsphp with WordPress — one container that serves HTTP itself. It listens on
+  # 8080 inside the container too, so WordPress's calls to its own address
+  # (http://localhost:8080 — WP-Cron, Site Health's loopback test) reach this same container.
   wordpress:
     build:
       context: .
     image: wordpress-docker-template:local
     ports:
-      - "8080:80"
+      - "8080:8080"
     environment:
       WORDPRESS_DB_HOST: mysql
       WORDPRESS_DB_NAME: wordpress
       WORDPRESS_DB_USER: root
       WORDPRESS_DB_PASSWORD: WordPress_Dev123!
       WORDPRESS_DEBUG: "true"
+      # Written into wp-config.php at every container start (docker/openlitespeed/) —
+      # change it here and restart; never edit wp-config.php itself.
       WORDPRESS_CONFIG_EXTRA: |
         define('WP_DEBUG_LOG', true);
         define('WP_DEBUG_DISPLAY', true);
         define('SCRIPT_DEBUG', true);
+        define('WP_CACHE', true);
     volumes:
+      # Core, the generated wp-config.php (its secret keys) and .htaccess (permalinks, LiteSpeed
+      # Cache's rules) — kept across restarts; the entrypoint upgrades core from a newer image.
+      - wp-html:/var/www/html
       - ./wp-content/themes:/var/www/html/wp-content/themes
       - ./wp-content/plugins:/var/www/html/wp-content/plugins
       - wp-uploads:/var/www/html/wp-content/uploads
     depends_on:
       mysql:
         condition: service_healthy
-    restart: unless-stopped
 
   mysql:
     image: mysql:8.4
@@ -30,7 +44,9 @@ services:
       MYSQL_ROOT_PASSWORD: WordPress_Dev123!
       MYSQL_DATABASE: wordpress
     ports:
-      - "3306:3306"
+      # Loopback only (the short form would put the database on the network), and never 3306,
+      # which a MySQL installed on the host may take back at any update.
+      - "127.0.0.1:3307:3306"
     volumes:
       - mysql-data:/var/lib/mysql
     healthcheck:
@@ -41,25 +57,8 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
-    restart: unless-stopped
-
-  wpcli:
-    image: wordpress:cli-php8.4
-    depends_on:
-      wordpress:
-        condition: service_started
-    volumes:
-      - ./wp-content/themes:/var/www/html/wp-content/themes
-      - ./wp-content/plugins:/var/www/html/wp-content/plugins
-      - wp-uploads:/var/www/html/wp-content/uploads
-    environment:
-      WORDPRESS_DB_HOST: mysql
-      WORDPRESS_DB_NAME: wordpress
-      WORDPRESS_DB_USER: root
-      WORDPRESS_DB_PASSWORD: WordPress_Dev123!
-    profiles:
-      - cli
 
 volumes:
   mysql-data:
+  wp-html:
   wp-uploads:

@@ -4,7 +4,8 @@
 [![Release](https://github.com/jackwjensen/wordpress-docker-template/actions/workflows/release.yml/badge.svg)](https://github.com/jackwjensen/wordpress-docker-template/actions/workflows/release.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![WordPress 7.1](https://img.shields.io/badge/WordPress-7.1-21759B?logo=wordpress&logoColor=white)
-![PHP 8.4](https://img.shields.io/badge/PHP-8.4-777BB4?logo=php&logoColor=white)
+![OpenLiteSpeed](https://img.shields.io/badge/OpenLiteSpeed-1.9-0E7DC2)
+![PHP 8.5](https://img.shields.io/badge/PHP-8.5-777BB4?logo=php&logoColor=white)
 ![MySQL 8.4 LTS](https://img.shields.io/badge/MySQL-8.4_LTS-4479A1?logo=mysql&logoColor=white)
 [![GHCR](https://img.shields.io/badge/ghcr.io-container-2496ED?logo=docker&logoColor=white)](https://github.com/jackwjensen/wordpress-docker-template/pkgs/container/wordpress-docker-template)
 
@@ -13,7 +14,8 @@ environment in Docker — ready to build a site on.** When you're ready, deploy 
 to any Docker host, take it onto your own account, and (if you like) keep pulling
 improvements from upstream.
 
-Modern stack — **WordPress 7.1 · PHP 8.4 · MySQL 8.4 LTS** — with GitHub Actions
+Modern stack — **WordPress 7.1 · OpenLiteSpeed · PHP 8.5 · MySQL 8.4 LTS** —
+ready for the LiteSpeed Cache plugin's server-side page cache, with GitHub Actions
 CI, a published image on GHCR, and an optional one-push deploy with automatic
 rollback.
 
@@ -23,6 +25,7 @@ rollback.
 - [Features](#features)
 - [Architecture](#architecture)
 - [The image](#the-image)
+- [Page cache: LiteSpeed Cache](#page-cache-litespeed-cache)
 - [Development commands](#development-commands)
 - [Running the tests](#running-the-tests)
 - [Deploy to your server](#deploy-to-your-server)
@@ -51,15 +54,17 @@ you're developing.
 
 ## Features
 
-- **WordPress 7.1 + PHP 8.4 + Apache** on a thin image built from the official
-  upstream, with tuned PHP upload limits baked in.
+- **WordPress 7.1 + OpenLiteSpeed + PHP 8.5 (lsphp)** in one container: the
+  official LiteSpeed image with WordPress core from the official WordPress image,
+  tuned PHP upload limits baked in, and the server-side page cache that the
+  [LiteSpeed Cache](https://wordpress.org/plugins/litespeed-cache/) plugin needs.
 - **MySQL 8.4 LTS** with a real authenticated health check.
 - **CI on every push/PR** — ShellCheck, Hadolint, Compose validation, actionlint,
   plus a build + smoke test (see the badge above).
 - **Published image** on GHCR, built and released from a version tag (keyless).
 - **Optional one-push deploy** over SSH with **automatic rollback** if WordPress
   fails to serve afterwards — dormant until you configure a target.
-- **WP-CLI** available locally for command-line management.
+- **WP-CLI** in the image — locally and on the server.
 
 ## Architecture
 
@@ -68,8 +73,9 @@ the environment-specific bits.
 
 | | Local (`docker-compose.yml`) | Production (`+ docker-compose.production.yml`) |
 | --- | --- | --- |
-| WordPress | Built from `Dockerfile`, port `8080:80`, debug on | Same image, no published port, debug off, `DISALLOW_FILE_EDIT` |
-| MySQL | Port `3306` published, dev password | No published port, password from `.env` |
+| WordPress | Built from `Dockerfile`, OpenLiteSpeed on port `8080:8080`, debug on | Same image, OpenLiteSpeed on `:80`, no published port, debug off, `DISALLOW_FILE_EDIT` |
+| MySQL | `127.0.0.1:3307` (this machine only), dev password | No published port, password from `.env` |
+| Restart policy | None — the stack runs only when you start it | `unless-stopped` on every service |
 | Networking | Default bridge only | Also joins an external reverse-proxy network |
 | Routing | Direct to `localhost:8080` | Reverse proxy → `<project>-wordpress:80` |
 
@@ -81,16 +87,82 @@ right one.
 
 ## The image
 
-WordPress is built from a small [`Dockerfile`](Dockerfile) that extends the
-official image and bakes in [`config/uploads.ini`](config/uploads.ini), so the PHP
-limits travel with the image. Local dev and production both build it; tagged
-releases publish it to GHCR:
+The [`Dockerfile`](Dockerfile) builds one container that serves HTTP itself:
+the official [`litespeedtech/openlitespeed`](https://hub.docker.com/r/litespeedtech/openlitespeed)
+image (OpenLiteSpeed + lsphp 8.5), WordPress core copied from the official
+`wordpress` image, pinned WP-CLI, and [`config/uploads.ini`](config/uploads.ini),
+so the PHP limits travel with the image. The server configuration lives in
+[`docker/openlitespeed/`](docker/openlitespeed/): one virtual host, PHP and the
+files run as `www-data`, no web admin console, plain HTTP on `8080` (local) and
+`80` (production, behind your reverse proxy).
+
+Two things work differently from the official WordPress image:
+
+- **`wp-config.php` is written at every container start** from the `WORDPRESS_*`
+  variables in the compose files. lsphp cannot see the container's environment
+  (`getenv()` returns false under LSAPI), so the official image's `wp-config.php`,
+  which reads the environment on every request, cannot work. The generated file
+  keeps the existing secret keys and table prefix. Change settings in the compose
+  files (`WORDPRESS_CONFIG_EXTRA` for extra `define()`s) and restart — never edit
+  `wp-config.php` itself.
+- **Core lives in the `wp-html` volume**, together with `wp-config.php` and
+  `.htaccess`, so a deploy keeps permalinks, cache rules and logins. Core still
+  follows the image: when the image carries a newer WordPress than the volume, the
+  entrypoint replaces core's files (never `wp-content`, `wp-config.php` or
+  `.htaccess`, and never a downgrade). After a major upgrade, WordPress asks for
+  its database update on the next admin visit.
+
+Local dev and production both build the image; tagged releases publish it to GHCR:
 
 ```bash
 docker pull ghcr.io/jackwjensen/wordpress-docker-template:latest
 # or pin a version
 docker pull ghcr.io/jackwjensen/wordpress-docker-template:1.0.0
 ```
+
+## Page cache: LiteSpeed Cache
+
+Allegro IT's WordPress sites run the
+[LiteSpeed Cache](https://wordpress.org/plugins/litespeed-cache/) plugin, which is
+why the image runs OpenLiteSpeed rather than Apache or nginx:
+
+- **Its page cache only works on a LiteSpeed web server** (OpenLiteSpeed or
+  LiteSpeed Enterprise). The plugin does not cache pages itself; it sends
+  `X-LiteSpeed-Cache-Control` headers, and the server's cache module stores and
+  serves the page. nginx and Apache ignore those headers, so there you get only
+  the plugin's optimisation features (CSS/JS, images), not the page cache.
+- The server tells the plugin it can cache by setting `X-LSCACHE` (`on,crawler`)
+  in `$_SERVER`. A response served from the cache carries `X-LiteSpeed-Cache: hit`.
+- Permalinks and the plugin's own rules live in **`.htaccess`**, which
+  OpenLiteSpeed reads (`autoLoadHtaccess`). WordPress writes it when Permalinks are
+  saved; from the command line, `dev.sh cli rewrite flush --hard` does the same.
+
+Set it up on a site:
+
+```bash
+./dev.sh cli plugin install litespeed-cache --activate
+```
+
+`WP_CACHE` is already `true` in both compose files. Purge with
+`./dev.sh cli litespeed-purge all` (= the admin bar's "Purge All"). The cache lives
+inside the container, so a restart or deploy starts it empty.
+
+> **WooCommerce shops: turn "Cache REST API" off** —
+> `./dev.sh cli litespeed-option set cache-rest 0`. It is on by default, and it
+> served WooCommerce's Store API cart from the cache, so shoppers would see each
+> other's carts. Cart, checkout and My Account pages are never cached.
+
+**Coming from W3 Total Cache or WP Rocket?** Uninstall it the WordPress way, so its
+drop-in `advanced-cache.php` goes too, then install LiteSpeed Cache:
+
+```bash
+./dev.sh cli plugin uninstall --deactivate w3-total-cache
+./dev.sh cli plugin install litespeed-cache --activate
+```
+
+W3 Total Cache leaves `wp-content/w3tc-config/`, `wp-content/cache/`, an
+`nginx.conf` in the site root and `w3tc_*` options behind; remove them by hand.
+Keep `WP_CACHE` true.
 
 ## Development commands
 
@@ -99,27 +171,36 @@ docker pull ghcr.io/jackwjensen/wordpress-docker-template:1.0.0
 | `dev.sh up` | Build and start containers |
 | `dev.sh down` | Stop containers |
 | `dev.sh reset` | Destroy volumes and restart fresh |
-| `dev.sh logs` | Follow WordPress logs |
-| `dev.sh cli wp plugin list` | Run WP-CLI commands |
+| `dev.sh logs` | Follow OpenLiteSpeed's error log and PHP's errors (files in the container, `/usr/local/lsws/logs/`) |
+| `dev.sh cli plugin list` | Run WP-CLI commands (inside the WordPress container, as `www-data`) |
 | `dev.sh backup` | Dump the database to `backups/` |
 | `dev.sh restore backups/file.sql` | Restore the database from a dump |
 
 (`dev.bat` provides the same commands on Windows.)
+
+Local ports: <http://localhost:8080> for the site and `127.0.0.1:3307` for MySQL
+(user `root`, password `WordPress_Dev123!` — local only). The stack has no restart
+policy, so it stays down after a Docker Desktop restart until you run `dev.sh up`.
 
 ## Running the tests
 
 The same checks CI runs, locally:
 
 ```bash
-shellcheck scripts/*.sh dev.sh tests/*.sh   # shell lint
+shellcheck scripts/*.sh dev.sh tests/*.sh docker/openlitespeed/*.sh   # shell lint
 hadolint Dockerfile                          # Dockerfile lint
 docker compose config -q                     # Compose validation
 bash tests/healthcheck.test.sh               # fast: no Docker stack needed
 bash tests/smoke.sh                          # builds the image + brings up the stack
 ```
 
-`tests/smoke.sh` asserts that WordPress serves HTTP, that the baked-in
-`upload_max_filesize` is active, and that WordPress can reach MySQL.
+`tests/smoke.sh` asserts that OpenLiteSpeed serves HTTP, that the baked-in
+`upload_max_filesize` is active, that LiteSpeed's page cache answers a cacheable
+page with a hit, that WordPress installs against MySQL, that permalinks work
+through `.htaccess`, that a restart keeps the secret keys and table prefix, and
+that core is upgraded from a newer image but never downgraded. It runs as its own
+Compose project (`wordpress-smoke`) with no published ports, so it never touches
+your dev stack's data and never needs port 8080.
 
 ## Deploy to your server
 
@@ -139,7 +220,9 @@ SSH to any Docker host on push to `master`. To activate it:
    clones the repo, generates the DB password, builds the image, and starts the
    stack.
 3. Put a reverse proxy in front for TLS and routing, pointing your domain at the
-   `wordpress` container on port **80**.
+   `wordpress` container on port **80**. Leave the proxy's "force HTTPS" off for
+   the upstream: OpenLiteSpeed speaks plain HTTP, and `wp-config.php` turns the
+   proxy's `X-Forwarded-Proto` header into HTTPS for WordPress.
 4. Push to `master`. The workflow rebuilds, health-checks that WordPress actually
    serves HTTP, and rolls back automatically if it doesn't.
 
@@ -174,6 +257,10 @@ build-provenance attestation, and drafts release notes.
    - **DB Host**: `mysql` (NOT `localhost` — containers use Docker DNS)
    - **DB Name**: `wordpress` · **DB User**: `root`
    - **DB Password**: from `MYSQL_ROOT_PASSWORD` in the server's `.env`
+
+   Duplicator writes its own `wp-config.php`; the container rewrites it at the
+   next start, keeping the secret keys and the imported table prefix. Then save
+   Settings → Permalinks once, so `.htaccess` gets the rewrite rules.
 5. Commit the `wp-content/themes/` and `wp-content/plugins/` changes and push.
 6. Sync the production DB to local: `./scripts/sync-db-from-prod.sh <site-name> example.com`
    (requires the `DEPLOY_HOST` env var; see the script's note about serialized data).
@@ -219,7 +306,10 @@ git merge upstream/master        # or: git rebase upstream/master
 ```
 
 Your themes, plugins, uploads, and database stay yours; upstream changes touch only
-the scaffolding (Dockerfile, Compose, CI, scripts, docs).
+the scaffolding (Dockerfile, Compose, CI, scripts, docs). Read
+[CHANGELOG.md](CHANGELOG.md) before you deploy a merge — a site deployed from the
+Apache version of this template needs the steps under "Upgrading a site already
+deployed from the Apache template" on its first OpenLiteSpeed deploy.
 
 ## Need a hand?
 
