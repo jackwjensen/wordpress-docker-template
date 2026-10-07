@@ -1,0 +1,27 @@
+{
+  "externalVocabulary": {
+    "names": [
+      "dbDelta",
+      "update_post_meta",
+      "wp_slash",
+      "template_include",
+      "page_on_front",
+      "post_translations",
+      "elementor_library",
+      "include/general",
+      "include/singular",
+      "header.php",
+      "single.php",
+      "page.php",
+      "mod_rewrite",
+      "pdo_sqlite"
+    ],
+    "prefixes": [
+      "pll_",
+      "_elementor_",
+      "ghcr.io/",
+      "/usr/local/",
+      "mods-available/"
+    ]
+  }
+}

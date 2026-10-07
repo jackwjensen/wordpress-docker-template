@@ -184,6 +184,14 @@ policy, so it stays down after a Docker Desktop restart until you run `dev.sh up
 
 ## Running the tests
 
+The repo carries Allegro IT's engineering-standards checks (`engineering_standards/`,
+rules in `.claude/rules/`). Turn on their git hooks once per clone — commit then runs the
+quick checks on what you stage, and push runs them all:
+
+```bash
+git config core.hooksPath engineering_standards/hooks
+```
+
 The same checks CI runs, locally:
 
 ```bash

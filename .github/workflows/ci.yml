@@ -33,7 +33,7 @@ jobs:
       - name: Validate Compose config (production merge)
         env:
           COMPOSE_PROJECT_NAME: ci
-          MYSQL_ROOT_PASSWORD: ci-validate-only
+          MYSQL_ROOT_PASSWORD: ci-validate-only # standards: committed-credential exempt -- fake value for `docker compose config` only; no database ever starts with it
         run: docker compose -f docker-compose.yml -f docker-compose.production.yml config -q
 
       - name: actionlint
@@ -43,6 +43,31 @@ jobs:
 
       - name: Health-check regression test
         run: bash tests/healthcheck.test.sh
+
+      # Engineering standards (engineering-standards pack, ci/check-php.yml).
+      # setup-python v6+ is the first major on the node24 runtime.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+
+      # CI-only: needs a PHP container; developer machines here have no `php` on PATH.
+      # Same PHP minor as the image's lsphp.
+      - name: PHP syntax check
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo php:8.5-cli \
+            sh -c 'find . -name "*.php" -not -path "./vendor/*" -print0 | xargs -0 -n1 php -l'
+
+      # ruff AND pytest: `verify.py --strict` turns a skipped gate into a failure. ruff is
+      # pinned because `ruff format --check` output changes between releases.
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip pytest "ruff==0.16.5"
+
+      # The scanner's own cases — the whole directory, never a list of files.
+      - name: Scanner tests
+        run: python -m pytest engineering_standards/ -q
+
+      - name: Verify
+        run: python engineering_standards/verify.py --strict --format github
 
   build-and-smoke:
     name: Build image & smoke test

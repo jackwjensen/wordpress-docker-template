@@ -1,3 +1,11 @@
+# Claude Code: the engineering-standards rules and shared settings are tracked; local
+# settings (permissions) are not. !.claude/ re-includes the directory in case a global
+# gitignore excludes it — git cannot re-include a file whose parent is excluded.
+!.claude/
+.claude/*
+!.claude/settings.json
+!.claude/rules/
+
 # Environment
 .env
 

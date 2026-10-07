@@ -20,7 +20,7 @@ declare(strict_types=1);
  * set -e): a container that cannot write its configuration must not serve a stale one.
  */
 
-const TARGET = '/var/www/html/wp-config.php';
+const TARGET = '/var/www/html/wp-config.php'; // standards: const-environment-literal exempt -- a path inside the image this script ships in; the Dockerfile fixes it identically in every environment
 const SALTS  = array( 'AUTH_KEY', 'SECURE_AUTH_KEY', 'LOGGED_IN_KEY', 'NONCE_KEY', 'AUTH_SALT', 'SECURE_AUTH_SALT', 'LOGGED_IN_SALT', 'NONCE_SALT' );
 
 /** Stops the container start with a message when a filesystem call reported failure. */
@@ -82,7 +82,7 @@ foreach ( $salts as $name => $value ) {
 $config .= "\n\$table_prefix = " . $lit( $table_prefix ) . ";\n";
 $config .= "define( 'WP_DEBUG', " . ( $debug ? 'true' : 'false' ) . " );\n\n";
 $config .= "// Behind a reverse proxy (production), which terminates TLS.\n";
-$config .= "if ( isset( \$_SERVER['HTTP_X_FORWARDED_PROTO'] ) && str_contains( \$_SERVER['HTTP_X_FORWARDED_PROTO'], 'https' ) ) {\n";
+$config .= "if ( str_contains( \$_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '', 'https' ) ) {\n";
 $config .= "\t\$_SERVER['HTTPS'] = 'on';\n}\n\n";
 $config .= "// WORDPRESS_CONFIG_EXTRA from the compose files:\n";
 $config .= trim( env( 'WORDPRESS_CONFIG_EXTRA', '' ) ) . "\n\n";
