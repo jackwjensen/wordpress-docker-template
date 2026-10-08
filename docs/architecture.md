@@ -102,9 +102,12 @@ image stays the single source.
 
 ## Why .htaccess changes restart the server
 
-OpenLiteSpeed reads a directory's `.htaccess` the first time it serves that directory and keeps
-it until it restarts — a new file, or an edit, is ignored (measured 2026-10-08, as root and as
-`www-data` alike; LiteSpeed Enterprise re-reads, OpenLiteSpeed does not). WordPress writes
+OpenLiteSpeed reads a directory's `.htaccess` the first time it rewrites a request through that
+directory and keeps it until it restarts — a new file, or an edit, is ignored (measured
+2026-10-08, as root and as `www-data` alike; LiteSpeed Enterprise re-reads, OpenLiteSpeed does
+not). Requests for real files (`/wp-login.php`, the health check) do not load it, which is why
+a new file can *seem* to apply: only after a pretty URL has been served is "no `.htaccess`"
+held. The smoke test reproduces that state before it checks the watcher. WordPress writes
 `.htaccess` when permalinks are saved, and LiteSpeed Cache writes its rules there, so the
 entrypoint polls the `.htaccess` files every 5 s and restarts OpenLiteSpeed gracefully
 (`lswsctrl restart`) when one changes. It watches the docroot two levels down plus the top of

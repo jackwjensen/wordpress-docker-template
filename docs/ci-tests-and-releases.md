@@ -24,8 +24,9 @@ type: reference
 - `tests/smoke.sh` — end-to-end: build + up, then assert `Server: LiteSpeed` on :8080 and :80;
   OpenLiteSpeed and lsphp running as `www-data`, the root filesystem read-only, `wp` the pinned
   WP-CLI; the upload limit (CLI and lsphp); `X-LSCACHE` + a real `X-LiteSpeed-Cache: hit`; a
-  WP-CLI install against MySQL; a pretty permalink through a NEW `.htaccess`, and an EDITED one
-  applied (the restart watcher); salts + an imported table prefix surviving a restart;
+  WP-CLI install against MySQL; a removed, a NEW and an EDITED `.htaccess` each applied (the
+  restart watcher — the docroot is first served with no `.htaccess`, else a server without the
+  watcher passes too); salts + an imported table prefix surviving a restart;
   `WORDPRESS_DEBUG=false` → off; and core upgraded from the image but never downgraded. It
   generates a throwaway `MYSQL_ROOT_PASSWORD` per run. Runs as Compose project `wordpress-smoke` with no published ports (probes inside
   the container via `COMPOSE_PROJECT_NAME`/`COMPOSE_FILE`), so it never deletes the dev stack's

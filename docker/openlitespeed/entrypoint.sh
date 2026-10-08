@@ -92,11 +92,12 @@ trap '"$LSWSCTRL" stop; exit 0' TERM INT
 #    does not). WordPress (Settings → Permalinks) and LiteSpeed Cache write .htaccess at
 #    runtime, so this loop restarts the server gracefully whenever one changes. Watched: the
 #    docroot two levels down plus the top of uploads — a set bounded by WordPress core's own
-#    tree, never by the number of uploads.
+#    tree, never by the number of uploads. A missing directory (no uploads volume, no uploads
+#    yet) is an empty set, not an error that set -e would turn into the container's exit.
 htaccess_state() {
   {
-    find "$WP_ROOT" -maxdepth 2 -name .htaccess -printf '%p %T@ %s\n' 2>/dev/null
-    find "$WP_ROOT/wp-content/uploads" -maxdepth 1 -name .htaccess -printf '%p %T@ %s\n' 2>/dev/null
+    find "$WP_ROOT" -maxdepth 2 -name .htaccess -printf '%p %T@ %s\n' 2>/dev/null || true
+    find "$WP_ROOT/wp-content/uploads" -maxdepth 1 -name .htaccess -printf '%p %T@ %s\n' 2>/dev/null || true
   } | sort
 }
 is_running() { "$LSWSCTRL" status | grep -q 'litespeed is running with PID'; }

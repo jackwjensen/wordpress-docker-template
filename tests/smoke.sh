@@ -102,8 +102,12 @@ status_within() { # <path> <expected status> -> succeeds once the path answers t
   done
   echo "$1 answered HTTP $status, expected $2" >&2; return 1
 }
-# The docroot has been served without an .htaccess by now (health checks, the install), so
-# this also proves a NEW .htaccess is picked up, not only one present at start.
+# First have OpenLiteSpeed serve the docroot with NO .htaccess (core install may have written
+# one): a pretty URL that 404s loads that state. Serving only real files (/wp-login.php, the
+# health check, the install page) does not, and then even a server without the watcher picked
+# up a new file — measured 2026-10-08. So this proves a NEW .htaccess is applied.
+in_wp rm -f /var/www/html/.htaccess
+status_within /hello-world/ 404 || fail "a removed .htaccess was never applied"
 wp rewrite structure '/%postname%/' --hard --quiet
 in_wp grep -q 'BEGIN WordPress' /var/www/html/.htaccess || fail "wp rewrite flush --hard wrote no .htaccess rules"
 status_within /hello-world/ 200 || fail "pretty permalink /hello-world/ never served (new .htaccess not applied)"
