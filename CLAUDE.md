@@ -63,7 +63,7 @@ Conventions worth knowing:
 
 This repo runs the Allegro IT engineering-standards pack: judgment rules in `.claude/rules/`, the scanner and gates in `engineering_standards/` — both synced by `/apply-standards`, never edited here. Verification is `python engineering_standards/verify.py`; the git hooks (`core.hooksPath engineering_standards/hooks`) run it at commit (`--staged`) and push, and CI runs it with `--strict`. Do not run it by hand.
 
-- **`php-standards.md` is copied by hand**: the pack's `has_php` looks only two directory levels deep and misses `docker/openlitespeed/make-wp-config.php`, so a re-sync does not refresh it. Copy it again from the pack after each `/apply-standards` until the pack's check is fixed.
+- **`php-standards.md` was copied in by hand once**: the pack's `has_php` looks only two directory levels deep and misses `docker/openlitespeed/make-wp-config.php`, so a first-time install would not add it. Now that it exists, `/apply-standards` refreshes it like every other rules file (the manifest consults `has_php` only for a missing file; checked 2026-10-08). A fresh adoption from this template needs the hand copy again until the pack's check is fixed.
 - **Settled, do not re-open**: the template ships no in-product user documentation (`userDocs` undeclared) and enumerates no public routes (`docsRouteInventories` undeclared). It has no database access code, UI, forms, login, payments, expiring credentials or background jobs of its own — the WordPress site built on it does — so `data-access`, `data-integrity`, `ui-standards`, `bot-defence`, `session-authority`, `payments`, `certificate-expiry` and `background-jobs` are not adopted.
 - Deploy-time hazards go in `PUBLISH_NOTES.md` in the same commit (`.claude/rules/publishing.md`).
 

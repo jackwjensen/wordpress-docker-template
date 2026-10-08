@@ -8,6 +8,7 @@ about a line of code.
 
     generic-filename        a file named after nothing -- utils.ts, Service.cs
     gitignore-build-output  generated output, or a secret, that version control will take
+    gitattributes-eol       a shell-read file a checkout may turn CRLF (standards_gitattributes.py)
 
 WHY A FILENAME IS A STANDARD AND NOT A PREFERENCE. naming.md's thesis is that a
 declaration must answer "what is this?" without the reader navigating away, and a path is

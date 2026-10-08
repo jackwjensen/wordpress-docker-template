@@ -28,11 +28,16 @@ Materialising the index to a temp tree would remove the caveat and was rejected:
 tree containing only the staged files would answer that wrongly. Trading a loud, rare,
 named caveat for a silent, systematic misfire is the wrong direction.
 
+It is also the scanner's one door to git for the two tree questions only git can answer
+exactly -- which files the repository ships (`versioned_files`), and what its
+`.gitattributes` resolve for them (`eol_attributes`, asked by `gitattributes-eol`).
+
 Source of truth: engineering-standards/engineering_standards/standards_git.py
 """
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -43,7 +48,12 @@ GIT_TIMEOUT_SECONDS = 30
 STAGED_DIFF_FILTER = "ACMR"
 
 
-def _run_git(root: Path, arguments: list[str]) -> str | None:
+def _run_git(
+    root: Path,
+    arguments: list[str],
+    stdin: str | None = None,
+    environment: dict[str, str] | None = None,
+) -> str | None:
     """Stdout of a git command, or None if git could not answer.
 
     None and "" mean different things and the callers depend on the difference: "" is a
@@ -53,6 +63,8 @@ def _run_git(root: Path, arguments: list[str]) -> str | None:
     try:
         completed = subprocess.run(  # noqa: S603  (fixed argv, shell=False)
             ["git", "-C", str(root), *arguments],  # noqa: S607  (git must come from PATH; an absolute path would be machine-specific)
+            input=stdin,
+            env={**os.environ, **environment} if environment else None,
             capture_output=True,
             text=True,
             # git speaks UTF-8; the locale codec would mangle or reject a path or commit
@@ -175,3 +187,47 @@ def partially_staged_files(root: Path) -> list[Path]:
 
     unstaged = set(unstaged_files(root))
     return sorted(path for path in staged if path in unstaged)
+
+
+def versioned_files(root: Path) -> list[str] | None:
+    """Root-relative paths git would ship: tracked, plus untracked files it does not ignore.
+
+    None when git cannot be asked. `-z` for the reason `_paths_from_nul_list` gives, and
+    de-duplicated because an unmerged path is listed once per conflict stage.
+    """
+    output = _run_git(root, ["ls-files", "--cached", "--others", "--exclude-standard", "-z"])
+    if output is None:
+        return None
+    return list(dict.fromkeys(name for name in output.split("\0") if name))
+
+
+# Attribute sources that live on ONE machine and travel with no clone. A user's global
+# attributes file (`core.attributesFile`) and the installation's system file can make a path
+# resolve `eol=lf` on the PC that asks while a fresh clone anywhere else gets CRLF -- which is
+# the exact failure the asking rule exists for, so the answer must come from the repository
+# alone. `$GIT_DIR/info/attributes` is also local, and git offers no switch to skip it.
+_REPOSITORY_ONLY_ATTRIBUTES = ["-c", f"core.attributesFile={os.devnull}"]
+_NO_SYSTEM_ATTRIBUTES = {"GIT_ATTR_NOSYSTEM": "1"}
+
+
+def eol_attributes(root: Path, relative_paths: list[str]) -> dict[str, str] | None:
+    """The `eol` attribute git resolves for each path: "lf", "crlf" or "unspecified".
+
+    Git itself does the resolving, deliberately -- pattern syntax, precedence between
+    lines, and every nested `.gitattributes` are its rules, and a hand-rolled matcher would
+    be a second implementation of them that agrees until the day it does not. Paths go in
+    on stdin so a large tree cannot overrun a command line. None when git cannot be asked.
+    """
+    if not relative_paths:
+        return {}
+    output = _run_git(
+        root,
+        [*_REPOSITORY_ONLY_ATTRIBUTES, "check-attr", "-z", "--stdin", "eol"],
+        stdin="".join(f"{path}\0" for path in relative_paths),
+        environment=_NO_SYSTEM_ATTRIBUTES,
+    )
+    if output is None:
+        return None
+    # `-z` output is flat triples: path NUL attribute NUL value NUL.
+    fields = output.split("\0")
+    return {fields[index]: fields[index + 2] for index in range(0, len(fields) - 2, 3)}

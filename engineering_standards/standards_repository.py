@@ -32,6 +32,7 @@ from standards_constants import check_duplicated_constants
 from standards_coverage import check_coverage
 from standards_disclosure import check_committed_sql_dump, check_sensitive_files
 from standards_docs import check_documentation
+from standards_gitattributes import check_gitattributes
 from standards_gitignore import check_gitignore
 from standards_jobs import check_job_result_storage
 from standards_pack_debt import check_pack_debt
@@ -53,6 +54,9 @@ def repository_violations(root: Path, config: CheckConfig, paths: list[Path]) ->
     """
     violations: list[Violation] = []
     violations += list(check_gitignore(root, config))
+    # Its sibling about what a CHECKOUT does to the tree rather than what the tree holds:
+    # whether every file a Unix shell reads resolves eol=lf. Reads the shape, takes the root.
+    violations += list(check_gitattributes(root))
     # Whether a background job's outcome is stored, and whether it names the job.
     violations += list(check_job_result_storage(root, config))
     # Whole-tree for the same reason, and a silent no-op in every repo but the pack:

@@ -72,7 +72,7 @@ RUNTIME_RULE = "runtime-support"
 # version that wrote it (`packVersion` in .standards-baseline.json). PROVENANCE, not
 # authority: sync_pack.py still decides drift by comparing file contents, so a forgotten
 # bump can never hide a stale file -- it only blurs the label on the report.
-PACK_VERSION = "2026.09.09-3"
+PACK_VERSION = "2026.10.06-1"
 
 # Minimum MAJOR version per action. Majors only: a patch pin is a security practice some repos
 # use deliberately (wordpress-docker-template pins @v7.0.0) and demanding an exact string would
