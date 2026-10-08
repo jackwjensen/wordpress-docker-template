@@ -20,9 +20,10 @@ CI, can build DIFFERENT CODE FROM THE SAME COMMIT, months apart, with nothing in
 recording which. The build is not reproducible, and the failure surfaces as "works on my
 machine" -- the single hardest class of bug to attribute, because the diff is empty.
 
-A plain `Version="52.3.0"` is already the minimum the policy asks for: NuGet resolves a direct
-reference to the LOWEST version satisfying it, so the number is both a floor and deterministic.
-That is the whole fix, and it is one line.
+A plain `Version="52.3.0"` is already the pin the policy asks for (every dependency pinned
+exactly, Jack 2026-10-02): NuGet resolves a direct reference to the LOWEST version satisfying
+it, so the number is deterministic. That is the whole fix, and it is one line. Keeping a pin
+current is the dependency gate's job (deps.py), not this rule's.
 
 THE CASE THAT MOTIVATED IT. InvoTrack carried `Stripe.net Version="47.*"` and a comment
 explaining that two machines had built different code from one commit; it was corrected to
@@ -103,8 +104,8 @@ COMPOSER_INTENTIONAL_DEV = frozenset({"roave/security-advisories"})
 # A requirements.txt line that names a package and NOTHING else -- no `==`, `>=`, `~=`, `<`,
 # `>`, `!=`, `@ url`, no environment marker. Extras in brackets are allowed and ignored. That
 # bare form is the only unambiguous floating case; a `>=` or `==` both record a decision and are
-# left alone (the estate asks for a minimum, and an app pinning exactly with a lockfile is a
-# defensible different choice this rule has no business overriding).
+# left alone by THIS rule (the estate pins exactly, and the dependency gate -- deps.py -- is what
+# refuses a `>=` in a repo that has adopted it; this rule only catches the bare floating form).
 REQUIREMENTS_UNPINNED = re.compile(r"^(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)(?:\[[^\]]+\])?\s*$")
 
 

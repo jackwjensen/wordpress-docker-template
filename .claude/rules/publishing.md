@@ -230,6 +230,35 @@ A rebuilt server changes the key and breaks every repo's deploy at once. That is
 failure mode of a pin — but it means the new fingerprint has to be distributed deliberately,
 so put it in the publish notes.
 
+## Deploys pull before they build (`deploy-no-pull`)
+
+A server that never pulls keeps the first copy of every tag it downloaded. Measured on the
+Allegro IT server 2026-09-28: no deploy script in the estate pulled, `mysql:8.4` was seven
+months old and `nginx:1.27-alpine` seventeen. Tags are pinned exactly now (an image moves only
+through the dependency gate, deliberately), and the pull is still needed: it is what fetches the
+newly pinned tag onto the box, and official images are rebuilt under the **same** tag when their
+base OS is patched. The forward path needs both halves:
+
+```bash
+docker compose pull --ignore-buildable   # the images the stack runs as-is (mysql, redis)
+docker compose build --pull              # the FROM images of what it builds
+docker compose up -d --force-recreate
+```
+
+`--ignore-buildable` is not optional: without it compose tries to pull the images this repo
+*builds* and exits 1. It skips only a service that carries its **own** `build:`, so a second
+service reusing that image by name (a celery worker on the backend's image) still gets pulled,
+fails, and aborts every other pull with it — mark that service `pull_policy: never`, which is
+the truth about an image that exists only on the box. **Leave the rollback unpulled** — it must not depend on the registry at
+the moment the deploy has already failed, which is why the rule asks for presence in the step
+rather than a flag on every line.
+
+**Pin the exact tag (`mysql:8.4.11`, never `8.4`, never `latest`), and let the gate move it.**
+A floating tag made the pull a version change nobody typed: the first deploy after a quiet month
+could carry a database release into a restart. With an exact tag the version changes only in a
+commit -- the dependency gate blocks every push until each newer release has been looked at
+(the pack's `docs/dependency-currency.md`) -- and the pull carries only same-version rebuilds.
+
 ## App containers set `USER` (`container-root-user`)
 
 A container listening on an unprivileged port needs no capability at all, so root buys nothing

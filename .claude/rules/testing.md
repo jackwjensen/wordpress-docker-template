@@ -86,6 +86,24 @@ suffix, so several writes in the same second do not sort. Both looked like defec
 not. Ask where the failure would actually be visible, and make each case produce exactly one
 artifact so there is no ordering question to get wrong.
 
+## A test answers to the repo, not the machine
+
+The suite is part of the build, so `self-contained-repo.md` applies to it: green on a fresh
+clone, whoever's machine that is. Two incidents from one day (2026-10-02), both red on one
+machine and green on another:
+
+- **A test that needs a tool says so.** Three gate tests ran a real ruff and asserted PASSED,
+  so wherever ruff was absent they contradicted a gate that correctly reported SKIPPED. Where
+  the repo *declares* the tool, its absence fails the test loudly; where it does not, the test
+  skips with a named reason. Never assert as if it were installed.
+- **A test that drives git isolates it** from user and system config — `GIT_CONFIG_GLOBAL`,
+  `GIT_CONFIG_NOSYSTEM=1`, and an explicit `core.excludesFile`, because git reads
+  `~/.config/git/ignore` even when nothing sets it. A developer's global `.env` ignore turned a
+  "tracked .env" fixture into an untracked one. Give the code under test the same
+  environment: if it asks git, isolating only the setup builds one repo and scans another.
+- **A fixture step fails loudly** (`check=True`). A swallowed setup failure surfaces later as
+  an unrelated assertion, which is what made the second incident read as a scanner bug.
+
 ## Before you refactor, characterise
 
 A file with no test is not a reason to leave it alone — it is a reason to **add the

@@ -10,11 +10,14 @@ Run: python test_verify_cli.py   (or pytest)
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 PACK_DIRECTORY = Path(__file__).resolve().parent
@@ -35,8 +38,9 @@ def make_repo(root: Path) -> Path:
     return root
 
 
-def run_verify(root: Path, *arguments: str, skip_variable: str | None = None):
+def run_verify(root: Path, *arguments: str, skip_variable: str | None = None, extra: dict[str, str] | None = None):
     environment = {key: value for key, value in os.environ.items() if key != "SKIP_STANDARDS_GATE"}
+    environment.update(extra or {})
     if skip_variable is not None:
         environment["SKIP_STANDARDS_GATE"] = skip_variable
     return subprocess.run(
@@ -69,6 +73,49 @@ def test_clean_repo_passes_and_names_what_ran() -> None:
         result = run_verify(repo)
         assert result.returncode == 0, result.stdout + result.stderr
         assert "ok      source limits" in result.stdout, "a pass must name the gate that ran"
+
+
+def _adopted_repo_with_a_newer_ruff(root: Path, decisions: list[dict]) -> dict[str, str]:
+    """A repo pinned to ruff 0.16.5 whose registry says 0.16.10 -- answered from a FRESH cache,
+    so the real `deps.py check` runs end to end through verify without touching the network."""
+    make_repo(root)
+    (root / ".gitignore").write_text(
+        ".env\n__pycache__/\n.venv/\n", encoding="utf-8"
+    )  # a requirements file makes it Python
+    (root / "requirements.txt").write_text("ruff==0.16.5\n", encoding="utf-8")
+    record = {"format": 1, "dependencies": {"pypi:ruff": decisions}}
+    (root / ".standards-dependencies.json").write_text(json.dumps(record), encoding="utf-8")
+    cache = root.parent / "dependency-cache.json"
+    releases = [["0.16.5", "2026-08-01", None], ["0.16.10", "2026-09-20", None]]
+    lookups = {"releases:pypi:ruff": {"releases": releases, "preferred": None, "fetched": time.time()}}
+    cache.write_text(json.dumps({"lookups": lookups, "notes": {}}), encoding="utf-8")
+    return {"STANDARDS_DEPS_CACHE": str(cache), "CI": ""}
+
+
+def test_a_release_nobody_looked_at_blocks_the_push_and_says_what_to_run() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp) / "repo"
+        result = run_verify(repo, extra=_adopted_repo_with_a_newer_ruff(repo, []))
+        assert result.returncode == 1, result.stdout + result.stderr
+        assert "[dependency-newer]" in result.stderr and "deps.py investigate pypi:ruff" in result.stderr
+
+
+def test_a_dated_deferral_lets_the_push_through_and_is_printed() -> None:
+    until = (datetime.now(UTC).date() + timedelta(days=7)).isoformat()
+    deferral = {
+        "version": "0.16.10",
+        "decision": "deferred",
+        "date": "2026-10-02",
+        "by": "Jack",
+        "reason": "0.16.10 reformats every file; take it with the formatting commit",
+        "until": until,
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        repo = Path(tmp) / "repo"
+        result = run_verify(repo, extra=_adopted_repo_with_a_newer_ruff(repo, [deferral]))
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "ok      dependencies" in result.stdout
+        assert f"deferred until {until}" in result.stdout, "a deferral that lets a push through must be SEEN"
 
 
 def test_violation_fails_with_the_rule_named() -> None:

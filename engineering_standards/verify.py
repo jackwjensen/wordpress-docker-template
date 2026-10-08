@@ -111,6 +111,8 @@ def report(results: list[GateResult]) -> None:
     for result in results:
         if result.outcome is Outcome.PASSED:
             print(f"  ok      {result.gate.name}")
+            for notice in result.notices:
+                print(f"            {notice}")
         elif result.outcome is Outcome.SKIPPED:
             print(f"  skipped {result.gate.name} -- {result.detail}")
 

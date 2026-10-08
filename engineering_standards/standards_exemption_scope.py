@@ -53,6 +53,7 @@ from standards_constants import DUPLICATED_LITERAL_RULE, ENVIRONMENT_LITERAL_RUL
 from standards_core import Violation, iter_code_lines
 from standards_cors import CORS_RULE
 from standards_debugflag import RULE as DEBUG_FLAG_RULE
+from standards_deps_pinning import UNPINNED_RULE
 from standards_disclosure import DISCLOSURE_RULE, SQL_DUMP_RULE
 from standards_dotnet_images import DOTNET_CONSISTENCY_RULE
 from standards_ef_provider import EF_CORE_RULE, EF_PROVIDER_RULE
@@ -86,8 +87,10 @@ from standards_tests import (
     TESTS_UNCOVERED_MODULE_RULE,
 )
 from standards_tls import TLS_RULE
+from standards_user_errors import TECHNICAL_ERROR_RULE
 from standards_versions import RULE as ACTION_VERSION_RULE
 from standards_versions import RUNTIME_RULE, TOOLCHAIN_RULE
+from standards_write_results import RULE as WRITE_RESULT_RULE
 
 INERT_RULE = "exemption-inert"
 
@@ -123,6 +126,7 @@ FILE_SCOPED_TAGS = frozenset(
         TEST_SILENTLY_SKIPPED_RULE,
         TEST_WITHOUT_ASSERTION_RULE,
         TLS_RULE,
+        WRITE_RESULT_RULE,
         "claude-md-length",
         "docs-orphan-page",
         # Reached through `exemption_reason(read_lines(command), ...)`, whose nested call the
@@ -143,10 +147,10 @@ FILE_SCOPED_TAGS = frozenset(
 # expression, and a file routinely holds both a genuine defect and a legitimate exception --
 # `line_exemption_reason` states that case in full.
 #
-# SEVEN TAGS ARE IN BOTH SETS, and that is not an error: `client-address`, `cors-wildcard`,
-# `tls-verification-disabled`, `sql-string-interpolation`, `job-swallows-failure` and
-# concurrency's two take a marker at EITHER scope, because a detector quoting its own patterns
-# needs the file-wide form while ordinary code needs the line. The first draft of this
+# EIGHT TAGS ARE IN BOTH SETS, and that is not an error: `client-address`, `cors-wildcard`,
+# `tls-verification-disabled`, `sql-string-interpolation`, `job-swallows-failure`,
+# concurrency's two and `write-result-discarded` take a marker at EITHER scope, because a
+# detector quoting its own patterns needs the file-wide form while ordinary code needs the line. The first draft of this
 # registry subtracted one set from the other and lost all seven; the drift test caught it
 # before the rule could call seven working markers dead.
 LINE_SCOPED_TAGS = frozenset(
@@ -172,12 +176,15 @@ LINE_SCOPED_TAGS = frozenset(
         SECRET_RULE,
         SQL_INTERPOLATION_RULE,
         SWALLOWS_RULE,
+        TECHNICAL_ERROR_RULE,
         TEST_ALWAYS_PASSES_RULE,
         TEST_SILENTLY_SKIPPED_RULE,
         TEST_WITHOUT_ASSERTION_RULE,
         TLS_RULE,
         TOOLCHAIN_RULE,
+        UNPINNED_RULE,
         WILDCARD_RULE,
+        WRITE_RESULT_RULE,
         # The four toolchain-consistency rules reach the reader as `toolchain.rule`, an
         # attribute of the Toolchain each of them declares. Nothing textual could resolve
         # that, which is why `INDIRECT_DISPATCH` below names the site rather than letting the
@@ -189,6 +196,7 @@ LINE_SCOPED_TAGS = frozenset(
         "compose-read-only",
         "container-root-user",
         "deploy-no-hostkey",
+        "deploy-no-pull",
         "deploy-root-ssh",
         "docs-stale-symbol",
         "docs-uncovered-route",

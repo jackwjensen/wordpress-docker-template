@@ -21,6 +21,7 @@ Source of truth: engineering-standards/engineering_standards/standards_config.py
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -136,7 +137,82 @@ MAX_TUNABLE_FILE_LINES = 1500
 # report "undeclared" is a skill asking -- test_sync_pack.py therefore holds both the
 # apply-standards and code-review skills to naming every key listed here. Adding a key to
 # CheckConfig.parse without adding it here and to both skills fails the pack's own tests.
-DECLARATIONS = ("userDocs", "docsRouteInventories")
+DECLARATIONS = ("userDocs", "docsRouteInventories", "mustReadResults", "userFacingExceptions")
+
+# One `mustReadResults` entry: a dotted call name, `Session.Write` or bare `commit`. Validated
+# here rather than trusted, because a typo'd entry -- `Session.Write(` -- would compile into a
+# pattern that matches nothing, and a declaration that silently checks nothing is the exact
+# failure a declaration exists to end. See standards_write_results.py for how it matches.
+MUST_READ_ENTRY = re.compile(r"[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*")
+
+
+def parse_must_read_results(raw: object) -> tuple[str, ...]:
+    """The declared must-read write calls, or a SystemExit naming the malformed entry."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, list) or not all(isinstance(entry, str) for entry in raw):
+        raise SystemExit(
+            'error: .standards.json "mustReadResults" must be a list of call names, e.g. ["Session.Write"].'
+        )
+    malformed = [entry for entry in raw if not MUST_READ_ENTRY.fullmatch(entry)]
+    if malformed:
+        raise SystemExit(
+            f'error: .standards.json "mustReadResults" has entries that are not dotted call names: {malformed}\n'
+            '  Write the receiver and method without parentheses or arguments -- "Session.Write", not\n'
+            '  "Session.Write(" -- or the bare method name. A malformed entry would match nothing.'
+        )
+    return tuple(raw)
+
+
+# `userFacingExceptions`: the repo's exception types whose message is written for the user,
+# beyond the ones `technical-error-shown` already knows by name (any type containing
+# `UserFacing`). Needed because the scanner reads one file at a time: InvoTrack's
+# `AccountingRefusalException : UserFacingException` is declared in one file and caught in
+# another, and sourcetext.ai's `AccountError` predates the naming convention. Jack, 2026-10-06.
+#
+# UNLIKE THE OTHER DECLARATIONS THIS ONE NARROWS A RULE -- every type listed stops being
+# reported -- so it is validated against the one abuse that would switch the rule off outright:
+# listing a general base type, whose message is by definition whatever the framework wrote.
+USER_FACING_ENTRY = re.compile(r"[A-Za-z_]\w*")
+GENERAL_EXCEPTION_TYPES = frozenset(
+    {
+        "Exception",
+        "SystemException",
+        "ApplicationException",
+        "InvalidOperationException",
+        "ArgumentException",
+        "HttpRequestException",
+        "BaseException",
+        "Error",
+        "TypeError",
+        "ValueError",
+        "RuntimeError",
+        "Throwable",
+        "RuntimeException",
+        "LogicException",
+    }
+)
+
+
+def parse_user_facing_exceptions(raw: object) -> tuple[str, ...]:
+    """The declared user-facing exception types, or a SystemExit naming the bad entry."""
+    if raw is None:
+        return ()
+    if not isinstance(raw, list) or not all(isinstance(entry, str) for entry in raw):
+        raise SystemExit(
+            'error: .standards.json "userFacingExceptions" must be a list of type names, e.g. ["AccountError"].'
+        )
+    malformed = [entry for entry in raw if not USER_FACING_ENTRY.fullmatch(entry)]
+    general = [entry for entry in raw if entry in GENERAL_EXCEPTION_TYPES]
+    if malformed or general:
+        raise SystemExit(
+            f'error: .standards.json "userFacingExceptions" has entries it cannot accept: {malformed + general}\n'
+            "  Write the bare class name, no namespace. List only types whose EVERY message is written\n"
+            "  for the user; a general base type carries the framework's own text and would switch\n"
+            "  technical-error-shown off."
+        )
+    return tuple(raw)
+
 
 # The settings that make the pack WEAKER, and how to tell a weakening from a tightening.
 # A reason is required to loosen a rule and never to tighten one -- `maxFileLines: 300`
@@ -297,6 +373,13 @@ class CheckConfig:
     # The shipped user-docs system, if the repo declares one. None = the userdocs family
     # is silent, exactly as docsRouteInventories gates route coverage.
     user_docs: Optional[UserDocsConfig] = None
+    # The persistence writes that can be refused and answer whether they saved -- see
+    # standards_write_results.py. Empty = `write-result-discarded` is silent, as with userDocs:
+    # which call is the must-read one is a fact about the repo that no call site states.
+    must_read_results: tuple[str, ...] = ()
+    # Exception types whose message is written for the user, beyond the `UserFacing*` names
+    # `technical-error-shown` already recognises. See parse_user_facing_exceptions.
+    user_facing_exceptions: tuple[str, ...] = ()
     # True when this repo CONVEYS a binary that links its data provider -- a desktop client, an
     # on-prem install, anything a third party receives and runs. Default False: everything in
     # this estate is a hosted service, and a hosted service distributes nothing.
@@ -351,5 +434,7 @@ class CheckConfig:
                 (entry["file"], entry["pattern"]) for entry in raw.get("docsRouteInventories", [])
             ),
             user_docs=UserDocsConfig.parse(raw.get("userDocs")),
+            must_read_results=parse_must_read_results(raw.get("mustReadResults")),
+            user_facing_exceptions=parse_user_facing_exceptions(raw.get("userFacingExceptions")),
             distributes_binaries=raw.get("distributesBinaries", False),
         )

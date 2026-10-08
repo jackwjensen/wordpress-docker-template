@@ -44,7 +44,8 @@ requires-python = ">=3.11"
 
 1. **Entry points** — every view, DRF action, management command, Celery task, webhook
    receiver, and signal handler wraps its body in `try/except` and returns a human-readable
-   error (or a proper HTTP status). Never let a raw traceback reach a user.
+   error (or a proper HTTP status). Never let a raw traceback reach a user — nor `str(e)`:
+   what the error must say is `user-errors.md` (enforced as `technical-error-shown`).
 2. **External resource access** — every DB call that can fail, HTTP request, file operation,
    cache call, and third-party SDK call gets its own `try/except`. Rethrow or handle
    deliberately.

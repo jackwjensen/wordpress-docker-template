@@ -64,7 +64,8 @@ Locals cannot be typed in PHP, so the **name** carries the whole load there; see
 1. **Entry points** — the front controller, every router action, every form POST handler,
    webhook receiver and cron entry wraps its body in `try/catch` and renders a human-readable
    error page. Never let a raw PHP error or stack trace reach the browser; that is an
-   information disclosure as well as a bad experience.
+   information disclosure as well as a bad experience. Nor `$e->getMessage()`: what the page
+   must say is `user-errors.md` (enforced as `technical-error-shown`).
 2. **External resource access** — every PDO call, `file_get_contents`, `curl`, `mail`, and
    third-party SDK call gets its own `try/catch`. Rethrow or handle deliberately.
 3. **Business logic in between** — none at all. Let it propagate.

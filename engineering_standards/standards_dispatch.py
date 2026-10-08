@@ -65,6 +65,8 @@ from standards_secrets import check_committed_credentials
 from standards_sqlinjection import check_sql_injection
 from standards_tests import check_test_quality
 from standards_tls import check_tls_verification
+from standards_user_errors import check_technical_error_shown
+from standards_write_results import check_write_results
 
 
 def check_source_file(
@@ -203,6 +205,21 @@ def check_source_file(
     # shapes that ARE decidable, and both survive a correct schema: a set-based write that
     # never passes the token, and a conflict caught and then written anyway.
     yield from check_concurrency(path, lines)
+
+    # The caller's half of the same subject: a write the store refused must be able to say so,
+    # and nobody may throw that answer away. Gated on a DECLARATION rather than a flag -- which
+    # call returns a must-read result is a fact about this repo that no call site states, so an
+    # undeclared repo gets silence, exactly as with `userDocs`. See standards_write_results.py.
+    yield from check_write_results(path, lines, config.must_read_results)
+
+    # What the person using the software is shown when something fails: never an exception's
+    # own text, never a bare status code. Not config-gated, for the reason the security rules
+    # above are not -- it is a defect the user meets, not an estate convention a repo may decline
+    # -- and line-exemptable for the output no end user reads. Each dialect matches only its own
+    # suffixes, so it is safe on every file. The repo's declared carriers ride along, because
+    # the rule reads one file and the carrier's subclass is usually declared in another.
+    # See standards_user_errors.py.
+    yield from check_technical_error_shown(path, lines, config.user_facing_exceptions)
 
     # Where a value that may change is allowed to live -- see standards_constants.py. Config-
     # gated rather than unconditional, unlike the four security rules above: a value in the

@@ -46,6 +46,17 @@ tests all live in one root tree is unaffected, because its scope is the repo roo
 matching stays repo-wide: a symbol name is distinctive enough to be evidence wherever it
 appears, and scoping it would break the normal way a monorepo tests a shared package.
 
+A PACKAGE IS NOT ALWAYS A PARENT (2026-09-28). .NET and JVM solutions express the same
+relationship as a SIBLING -- `InvoTrack.Tests/` beside `InvoTrack/`, never inside it -- so the
+scoping above gave those test projects a scope containing no production modules, and filename
+claims covered nothing whatsoever. Measured in InvoTrack: 44 modules reported uncovered in a
+repo with 191 passing tests. The tell was `AssetVersion.cs`, which stayed reported even after a
+thorough `AssetVersionTests.cs` named it four times -- its only public surface is a property,
+so it defines no symbol the corpus could name either, leaving it uncoverable by any test that
+could be written. `_filename_claim_scope` now maps `<Project>.Tests` to `<Project>` when that
+sibling exists, and `_subjects_of_test_filename` reads the separator-less `AssetVersionTests`
+spelling. Both halves are needed: either alone still covers nothing.
+
 Source of truth: engineering-standards/engineering_standards/standards_tests.py
 """
 
@@ -73,6 +84,12 @@ UNTESTABLE_DIRECTORIES = frozenset({"migrations", "Migrations"})
 
 TEST_FILENAME = re.compile(r"(?i)^(?:test[-_].+|.+[-_]test|.+\.test|.+\.spec|test|.+tests?)$")
 TEST_DIRECTORIES = frozenset({"test", "tests", "spec", "specs", "__tests__"})
+
+# A test PROJECT directory, which is how .NET and JVM solutions lay tests out: `InvoTrack.Tests`
+# beside `InvoTrack`, rather than `tests/` inside it. It is the same relationship as
+# TEST_DIRECTORIES expresses, spelled as a sibling instead of a child, so it scopes the same way
+# -- see `_filename_claim_scope`.
+TEST_PROJECT_DIRECTORY = re.compile(r"(?i)^(?P<subject>.+)\.(?:unit|integration|functional)?tests?$")
 
 # A definition of anything. A file with none of these is declarative -- a returned table, a
 # constant list, a schema -- and has no behaviour a test could pin.
@@ -173,10 +190,26 @@ def _filename_claim_scope(path: Path) -> Path:
     A repo whose tests all live in one root `tests/` tree scopes to the repo root and so keeps
     the old, permissive behaviour -- the narrowing only bites where tests sit inside packages,
     which is where the collision was.
+
+    A .NET or JVM solution expresses the same relationship as a SIBLING rather than a child:
+    `InvoTrack.Tests/` beside `InvoTrack/`, never inside it. Without the sibling step below its
+    scope was itself -- a directory holding no production modules -- so filename claims covered
+    nothing at all. Measured in InvoTrack on 2026-09-28: 44 modules reported uncovered in a repo
+    with 191 passing tests, and `AssetVersion.cs` stayed reported even with a thorough
+    `AssetVersionTests.cs` naming it four times, because its only public surface is a property
+    and so it defines no symbol the corpus could name either. The sibling must exist: a
+    `Standalone.Tests/` next to no `Standalone/` claims only itself, so a stray name cannot
+    silently widen the scope to the whole repository.
     """
     scope = path.parent
     while scope.name in TEST_DIRECTORIES:
         scope = scope.parent
+
+    match = TEST_PROJECT_DIRECTORY.match(scope.name)
+    if match:
+        subject = scope.parent / match.group("subject")
+        if subject.is_dir():
+            return subject
     return scope
 
 
@@ -199,6 +232,14 @@ def _subjects_of_test_filename(stem: str) -> set[str]:
             subjects.add(stem[len(prefix) :])
     for suffix in ("_test", "-test", ".test", ".spec"):
         if stem.endswith(suffix):
+            subjects.add(stem[: -len(suffix)])
+
+    # The .NET and JVM spelling has no separator: `AssetVersionTests` names `AssetVersion`.
+    # Matched case-SENSITIVELY on a capital T, which is what keeps it from mangling the
+    # snake_case convention above -- `standards_tests` must keep claiming `standards_tests`,
+    # not `standards_`.
+    for suffix in ("Tests", "Test"):
+        if stem.endswith(suffix) and len(stem) > len(suffix):
             subjects.add(stem[: -len(suffix)])
     return subjects
 

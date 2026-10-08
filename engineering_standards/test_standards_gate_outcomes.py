@@ -138,3 +138,13 @@ def test_a_declared_gate_keeps_the_unreachable_skip() -> None:
 
     assert result.outcome is Outcome.SKIPPED
     assert "not reachable" in result.detail
+
+
+def test_a_passing_gate_keeps_its_notices_and_nothing_else() -> None:
+    """The dependency gate passes BECAUSE of a dated deferral, and that deferral must be seen
+    on every run -- so a pass keeps its `notice:` lines, and only those (build noise stays out)."""
+    script = "print('restore complete'); print('notice: pypi:ruff covered: deferred until 2026-10-20')"
+    result = run_gate(Gate("notices", [sys.executable, "-c", script], Path.cwd()))
+
+    assert result.outcome is Outcome.PASSED
+    assert result.notices == ("pypi:ruff covered: deferred until 2026-10-20",)

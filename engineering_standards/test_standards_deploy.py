@@ -21,6 +21,7 @@ from standards_core import CheckConfig
 from standards_deploy import (
     check_container_user,
     check_deploy_host_key,
+    check_deploy_pull,
     check_deploy_ssh_user,
 )
 from standards_dispatch import check_source_file
@@ -149,6 +150,123 @@ def test_a_workflow_with_no_ssh_step_is_silent() -> None:
     assert not list(check_deploy_host_key(WORKFLOW, ["      - uses: actions/checkout@v5"]))
 
 
+# ---- deploy-no-pull --------------------------------------------------------------------
+
+SSH_STEP_HEAD = (
+    "      - name: Deploy via SSH",
+    "        uses: appleboy/ssh-action@v1",
+    "        with:",
+    "          username: deploy",
+    '          fingerprint: "SHA256:abc"',
+    "          script: |",
+)
+
+
+def pull_step(*script: str) -> list[str]:
+    return list(SSH_STEP_HEAD) + [f"            {line}" for line in script]
+
+
+def test_up_build_without_any_pull_is_flagged() -> None:
+    """The shape seven of the estate's deploy scripts shipped."""
+    lines = pull_step("docker compose up --build --force-recreate --remove-orphans -d")
+    assert rules(check_deploy_pull(WORKFLOW, lines)) == ["deploy-no-pull"]
+
+
+def test_build_then_up_without_pull_is_flagged() -> None:
+    """The InvoTrack/DonorLink shape: separate build, then up."""
+    lines = pull_step("docker compose build", "docker compose up --force-recreate -d")
+    assert rules(check_deploy_pull(WORKFLOW, lines)) == ["deploy-no-pull"]
+
+
+def test_both_halves_present_passes() -> None:
+    lines = pull_step(
+        "docker compose pull --ignore-buildable",
+        "docker compose build --pull",
+        "docker compose up --force-recreate -d",
+    )
+    assert not list(check_deploy_pull(WORKFLOW, lines))
+
+
+def test_base_half_alone_is_still_flagged() -> None:
+    """Fresh base images do nothing for the mysql the stack runs as-is."""
+    lines = pull_step("docker compose build --pull", "docker compose up -d")
+    violations = list(check_deploy_pull(WORKFLOW, lines))
+    assert rules(violations) == ["deploy-no-pull"]
+    assert "--ignore-buildable" in violations[0].message
+    assert "build --pull" not in violations[0].message
+
+
+def test_image_half_alone_is_still_flagged() -> None:
+    lines = pull_step("docker compose pull --ignore-buildable", "docker compose up --build -d")
+    violations = list(check_deploy_pull(WORKFLOW, lines))
+    assert rules(violations) == ["deploy-no-pull"]
+    assert "build --pull" in violations[0].message
+
+
+def test_up_build_pull_always_does_not_count_as_a_base_refresh() -> None:
+    """`--pull always` is documented for pulled images, not for the FROM of built ones."""
+    lines = pull_step("docker compose up --build --pull always -d")
+    assert rules(check_deploy_pull(WORKFLOW, lines)) == ["deploy-no-pull"]
+
+
+def test_up_pull_always_satisfies_the_image_half() -> None:
+    lines = pull_step("docker compose build --pull", "docker compose up --pull always -d")
+    assert not list(check_deploy_pull(WORKFLOW, lines))
+
+
+def test_an_unpulled_rollback_is_allowed() -> None:
+    """The rollback must not depend on the registry; the forward path carries the pull."""
+    lines = pull_step(
+        "rollback() {",
+        '  git reset --hard "$PREV_COMMIT"',
+        "  docker compose up --build --force-recreate -d",
+        "}",
+        "trap rollback ERR",
+        "docker compose pull --ignore-buildable",
+        "docker compose build --pull",
+        "docker compose up --build --force-recreate -d",
+    )
+    assert not list(check_deploy_pull(WORKFLOW, lines))
+
+
+def test_a_comment_about_pulling_does_not_satisfy_the_rule() -> None:
+    lines = pull_step(
+        "# TODO: docker compose build --pull and docker compose pull",
+        "docker compose up --build -d",
+    )
+    assert rules(check_deploy_pull(WORKFLOW, lines)) == ["deploy-no-pull"]
+
+
+def test_global_flags_and_legacy_binary_are_recognised() -> None:
+    lines = pull_step(
+        "docker-compose -p app -f a.yml pull --ignore-buildable",
+        "docker-compose -p app -f a.yml build --pull",
+        "docker-compose -p app -f a.yml up -d",
+    )
+    assert not list(check_deploy_pull(WORKFLOW, lines))
+
+
+def test_a_step_that_only_runs_git_is_silent() -> None:
+    assert not list(check_deploy_pull(WORKFLOW, pull_step("git fetch origin master")))
+
+
+def test_docker_outside_an_ssh_step_is_ignored() -> None:
+    """A CI job building on a fresh runner has no stale cache to refresh."""
+    lines = ["      - name: Build", "        run: docker compose up --build -d"]
+    assert not list(check_deploy_pull(WORKFLOW, lines))
+
+
+def test_deploy_no_pull_is_line_exemptable() -> None:
+    """The marker sits on the `uses:` line's lead-in, where deploy-no-hostkey reads its own."""
+    lines = pull_step("docker compose up --build -d")
+    lines.insert(
+        1,
+        "        # standards: deploy-no-pull exempt -- the host is air-gapped and images arrive "
+        "by docker load from a signed tarball, so there is no registry to pull from.",
+    )
+    assert not list(check_deploy_pull(WORKFLOW, lines))
+
+
 # ---- container-root-user ---------------------------------------------------------------
 
 
@@ -242,10 +360,13 @@ def test_dispatcher_reaches_the_workflow_rules() -> None:
         "    steps:\n"
         "      - uses: appleboy/ssh-action@v1\n"
         "        with:\n"
-        "          username: root\n",
+        "          username: root\n"
+        "          script: |\n"
+        "            docker compose up --build -d\n",
     )
     assert "deploy-root-ssh" in found
     assert "deploy-no-hostkey" in found
+    assert "deploy-no-pull" in found
 
 
 def test_dispatcher_reaches_the_dockerfile_rule() -> None:
@@ -261,7 +382,9 @@ def test_dispatcher_reaches_a_suffixed_dockerfile() -> None:
 def test_a_compliant_dockerfile_produces_nothing() -> None:
     found = dispatch(
         "Dockerfile",
-        "FROM mcr.microsoft.com/dotnet/aspnet:10.0\nWORKDIR /app\nUSER $APP_UID\n",
+        # Pinned exactly: since 2026-10-02 a floating `aspnet:10.0` is itself a finding
+        # (dependency-unpinned), so "compliant" includes the tag.
+        "FROM mcr.microsoft.com/dotnet/aspnet:10.0.12\nWORKDIR /app\nUSER $APP_UID\n",
     )
     assert found == []
 

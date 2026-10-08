@@ -117,6 +117,17 @@ PACKAGE_JSON_FILENAME = re.compile(r"^package\.json$", re.IGNORECASE)
 # README and licence in the tree.
 REQUIREMENTS_FILENAME = re.compile(r"^requirements[\w.-]*\.txt$", re.IGNORECASE)
 
+# Files that declare versions and are in scope for NOTHING else, added for dependency-unpinned
+# (2026-10-02). Without this the rule would have been blind to them exactly the way the
+# credential rule was blind to appsettings.json: `global.json` (the SDK), `dotnet-tools.json`,
+# `Directory.Build.props` / `Directory.Packages.props` (package versions), a `compose.yml` that
+# lacks the `docker-` prefix COMPOSE_FILENAME requires, and a composite action's `action.yml`.
+DEPENDENCY_MANIFEST_FILENAME = re.compile(
+    r"^(?:global\.json|dotnet-tools\.json|directory\.(?:build|packages)\.props"
+    r"|compose(?:\.[\w-]+)?\.ya?ml|action\.ya?ml)$",
+    re.IGNORECASE,
+)
+
 # Config files, in scope for the committed-credential rule. THIS IS THE GAP THAT LET THE REAL
 # ONE THROUGH: `appsettings.Development.json` was in scope for nothing at all, because ".json"
 # is not a source suffix and no filename predicate named it -- so a committed demo password in
@@ -213,6 +224,7 @@ def should_check(path: Path, repo_root: Path, config: CheckConfig) -> bool:
         or REQUIREMENTS_FILENAME.match(path.name)
         or CONFIG_FILENAME.match(path.name)
         or DEPENDABOT_FILENAME.match(path.name)
+        or DEPENDENCY_MANIFEST_FILENAME.match(path.name)
         or is_workflow(path, repo_root)
     )
     if not in_scope:

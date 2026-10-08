@@ -14,7 +14,7 @@ services:
   wordpress:
     build:
       context: .
-    image: wordpress-docker-template:local
+    image: wordpress-docker-template:local # standards: dependency-unpinned exempt -- the name this file's own build: gives ./Dockerfile; never pulled from a registry
     # <project>-web: the name the reverse proxy forwards to (port 80). Interpolated, because
     # every site built from this template is its own instance (infrastructure.md).
     container_name: ${COMPOSE_PROJECT_NAME:-wordpress}-web
@@ -62,7 +62,7 @@ services:
         condition: service_healthy
 
   mysql:
-    image: mysql:8.4
+    image: mysql:8.4.11
     container_name: ${COMPOSE_PROJECT_NAME:-wordpress}-db
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env - ./dev.sh up generates it}

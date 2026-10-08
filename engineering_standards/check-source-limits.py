@@ -14,7 +14,9 @@ Checks: file-too-long, baseline-grew, bool-prefix, money-not-decimal,
 unset-not-zero, payload-default, date-sentinel, date-out-of-range, razor-var,
 php-strict-types, query-shape, paged-without-order (a paginated query with no total order --
 see standards_paging.py), client-address (the client's address read from the peer socket or
-the front of the forwarded chain -- see standards_client_address.py), the constants family
+the front of the forwarded chain -- see standards_client_address.py), technical-error-shown
+(an exception's own text or a bare status code reaching the user -- see
+standards_user_errors.py), the constants family
 (config-default-in-code, const-environment-literal, plus const-duplicated-literal on
 whole-tree scans -- see standards_constants.py), the deployment-contract family (compose-port,
 compose-container-name, compose-overlay-name, deploy-gate, env-example-compose),

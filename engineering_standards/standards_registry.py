@@ -19,6 +19,7 @@ Source of truth: engineering-standards/engineering_standards/standards_registry.
 
 from __future__ import annotations
 
+from standards_deps_pinning import UNPINNED_RULE
 from standards_dotnet_images import DOTNET_TOOLCHAIN
 from standards_ef_provider import EF_PROVIDER_RULE
 from standards_node_support import NODE_TOOLCHAIN
@@ -28,6 +29,7 @@ from standards_python_consistency import PYTHON_TOOLCHAIN
 from standards_python_support import PYTHON_RULE
 from standards_rules import BUDGET_RULE
 from standards_secrets import SECRET_RULE
+from standards_user_errors import TECHNICAL_ERROR_RULE
 from standards_versions import RUNTIME_RULE
 
 # The registry lives HERE rather than in the engine, so the engine depends on no toolchain and
@@ -56,7 +58,27 @@ TOOLCHAINS = (PYTHON_TOOLCHAIN, NODE_TOOLCHAIN, PHP_TOOLCHAIN, DOTNET_TOOLCHAIN)
 # siblings, rules-scope-declared and rules-file-length, are ordinary debt and stay baselineable;
 # they name a file somebody can go and fix. The budget names a decision, and `.standards.json`
 # is where a decision is recorded with its reason.
+#
+# UNPINNED_RULE joins them for package-wildcard's reason: a floating version is not reproducible
+# today, and "blocking is the pack doing its job" (Jack, 2026-10-02) -- a repo pins, it does not
+# grandfather. Line-exemptable like the rest.
+#
+# TECHNICAL_ERROR_RULE joins them because each finding is a defect a user meets today -- an
+# English stack-trace sentence where an explanation belongs -- and a baselined one is that bug
+# filed as accepted (Jack, 2026-10-06, after InvoTrack's seventy). A repo on its next pull fixes
+# the site, declares its carrier in `userFacingExceptions`, or marks the line with a reason.
 NEVER_BASELINED: frozenset[str] = frozenset(
-    {RUNTIME_RULE, EF_PROVIDER_RULE, PYTHON_RULE, PHP_RULE, WILDCARD_RULE, SECRET_RULE, HOLDBACK_RULE, BUDGET_RULE}
+    {
+        TECHNICAL_ERROR_RULE,
+        RUNTIME_RULE,
+        EF_PROVIDER_RULE,
+        PYTHON_RULE,
+        PHP_RULE,
+        WILDCARD_RULE,
+        SECRET_RULE,
+        HOLDBACK_RULE,
+        BUDGET_RULE,
+        UNPINNED_RULE,
+    }
     | {toolchain.rule for toolchain in TOOLCHAINS}
 )

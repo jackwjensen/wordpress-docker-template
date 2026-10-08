@@ -17,6 +17,7 @@ What replaces it is the pair of judgements that can now fail silently:
 
 from __future__ import annotations
 
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -30,6 +31,7 @@ from standards_gates import (
     python_gates,
     run_gate,
 )
+from standards_projects import declared_tools
 
 
 def make_repo(root: Path, **files: str) -> Path:
@@ -59,6 +61,17 @@ def test_commit_stage_scopes_the_scanner_to_the_staged_files(tmp_path: Path) -> 
 
     assert len(commit_gates) == 1
     assert "--staged" in commit_gates[0].command
+
+
+def test_the_dependency_gate_runs_at_push_and_only_where_adopted(tmp_path: Path) -> None:
+    """It needs the network, so never at commit; and it blocks, so never in a repo that has not
+    opted in -- a pack sync must not start refusing pushes in a repo nobody converted to pins."""
+    repo = make_repo(tmp_path, **{"engineering_standards__deps.py": ""})
+    assert "dependencies" not in gate_names(repo, Stage.PUSH)
+
+    (repo / ".standards-dependencies.json").write_text('{"format": 1, "dependencies": {}}', encoding="utf-8")
+    assert "dependencies" in gate_names(repo, Stage.PUSH)
+    assert "dependencies" not in gate_names(repo, Stage.COMMIT)
 
 
 def test_push_stage_scans_the_whole_tree(tmp_path: Path) -> None:
@@ -339,6 +352,48 @@ def _ruff_check_gate(repo: Path) -> Gate:
     return next(gate for gate in python_gates(repo, ruff_only=True) if gate.name == "ruff")
 
 
+# The three tests below run REAL ruff, and run_gate rightly SKIPS a tool that is not
+# installed -- so without this they assert PASSED against a correct SKIPPED wherever ruff is
+# absent. That was every .NET consumer whose CI installs only pytest: InvoTrack's deploy was
+# blocked from 2026-09-28 by these three alone. The verdict follows the same declaration the
+# gate itself follows: a checkout whose pyproject.toml declares [tool.ruff] (the pack does)
+# must have ruff, so its absence FAILS rather than skips -- otherwise the pack's own CI losing
+# its `pip install ruff` would turn these into a silent skip, the exact shape of bug the pack
+# exists to prevent. A checkout that never declared ruff gets a named skip.
+CHECKOUT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def ruff_verdict(installed: bool, declared: bool) -> str:
+    """`run`, `skip` or `fail` for a test that needs a real ruff."""
+    if installed:
+        return "run"
+    return "fail" if declared else "skip"
+
+
+def _checkout_declares_ruff() -> bool:
+    # Existence first: declared_tools() reports an unreadable pyproject.toml loudly, and a
+    # consumer with no Python project of its own is not a defect worth a line on stderr.
+    return (CHECKOUT_ROOT / "pyproject.toml").is_file() and "ruff" in declared_tools(CHECKOUT_ROOT)
+
+
+@pytest.fixture
+def real_ruff() -> None:
+    verdict = ruff_verdict(importlib.util.find_spec("ruff") is not None, _checkout_declares_ruff())
+    if verdict == "fail":
+        pytest.fail(f"ruff is declared in {CHECKOUT_ROOT / 'pyproject.toml'} but not installed for {sys.executable}")
+    if verdict == "skip":
+        pytest.skip("ruff is not installed, and this checkout does not declare [tool.ruff]")
+
+
+@pytest.mark.parametrize(
+    ("installed", "declared", "expected"),
+    [(True, True, "run"), (True, False, "run"), (False, True, "fail"), (False, False, "skip")],
+)
+def test_a_missing_ruff_skips_only_where_nobody_declared_it(installed: bool, declared: bool, expected: str) -> None:
+    assert ruff_verdict(installed, declared) == expected
+
+
+@pytest.mark.usefixtures("real_ruff")
 def test_the_pack_exclusion_leaves_the_repo_s_own_ruff_excludes_standing(tmp_path: Path) -> None:
     """ruff's `--exclude` REPLACES the configured exclude list; only `--extend-exclude` adds.
 
@@ -354,6 +409,7 @@ def test_the_pack_exclusion_leaves_the_repo_s_own_ruff_excludes_standing(tmp_pat
     assert run_gate(gate).outcome is Outcome.PASSED
 
 
+@pytest.mark.usefixtures("real_ruff")
 def test_the_pack_s_own_files_are_still_excluded_from_a_consumer_s_ruff(tmp_path: Path) -> None:
     """The other half, asserted separately so a fix cannot trade one for the other.
 
@@ -366,6 +422,7 @@ def test_the_pack_s_own_files_are_still_excluded_from_a_consumer_s_ruff(tmp_path
     assert run_gate(_ruff_check_gate(repo)).outcome is Outcome.PASSED
 
 
+@pytest.mark.usefixtures("real_ruff")
 def test_the_format_gate_gets_the_same_additive_exclusion(tmp_path: Path) -> None:
     """`ruff format` is handed the identical list, so it fails the identical way.
 

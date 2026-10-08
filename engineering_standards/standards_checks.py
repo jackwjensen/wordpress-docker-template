@@ -186,6 +186,7 @@ from standards_compose import (  # noqa: E402,F401,I001  (kept beside the other 
 from standards_deploy import (  # noqa: E402,F401  (kept beside the other rule definitions)
     check_container_user,
     check_deploy_host_key,
+    check_deploy_pull,
     check_deploy_ssh_user,
 )
 from standards_sentinels import (  # noqa: E402,F401  (kept beside the other rule definitions)

@@ -109,6 +109,16 @@ database).
   unchanged.
 - The image `HEALTHCHECK` now uses exec (JSON) form, as Hadolint DL3025 requires
   (flagged once the Hadolint action was bumped to 3.5.0); behaviour is unchanged.
+- **Every dependency is pinned to one exact release** (engineering-standards pack
+  2026.10.08-2): images to exact tags (`wordpress:7.1.3-php8.5-fpm`, `mysql:8.4.11`,
+  `rhysd/actionlint:1.7.12`), actions to commit SHAs with the version beside them — the
+  same releases they resolved to, nothing upgraded. Dependabot now also watches the
+  compose files (`docker-compose` ecosystem).
+- **The deploy pulls before it builds** (`docker compose pull --ignore-buildable`, then
+  `build --pull`), so a server fetches a newly pinned tag and same-tag security rebuilds;
+  the rollback stays unpulled. See PUBLISH_NOTES.md.
+- CI installs its test tools from `engineering_standards/requirements.txt` (ruff 0.16.10,
+  pytest 9.1.1) instead of versions typed into the workflow.
 
 ### Fixed
 

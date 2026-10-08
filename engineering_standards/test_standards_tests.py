@@ -53,6 +53,9 @@ assert len(EXEMPT_REASON) >= MIN_EXEMPTION_REASON_LENGTH, "fixture must clear th
 # written out longhand re-creates the collision it is describing.
 MODULE = "<?php\nfunction fixture_render_thing(string $slug): ?array {\n    return find($slug);\n}\n"
 PY_MODULE = "def fixture_render_thing(slug):\n    return find(slug)\n"
+# Defines a symbol, so it is not skipped as declarative -- but the .NET tests below name none
+# of them, so only the FILENAME claim can cover it. That is what makes them test the scoping.
+MODULE_CS = "public static class Fixturemod\n{\n    public static int Render(string slug) => 1;\n}\n"
 
 
 @contextmanager
@@ -274,6 +277,46 @@ def test_a_root_level_test_tree_still_covers_the_whole_repo():
         write(root, "tests/test_fixturemod.py", "def test_it():\n    assert render()\n")
 
         assert covered(root) == []
+
+
+def test_a_dotnet_sibling_test_project_covers_the_project_it_tests():
+    """The .NET convention, and the one the scoping did not know about.
+
+    Measured in InvoTrack on 2026-09-28: a solution lays out `InvoTrack/` and
+    `InvoTrack.Tests/` as SIBLINGS, so the test project's scope was itself -- a directory
+    containing no production modules. Filename claims therefore covered nothing at all, and
+    the rule reported 44 modules uncovered in a repo with 191 passing tests. `AssetVersion.cs`
+    was the proof: a thorough `AssetVersionTests.cs` naming it four times left it reported,
+    because its only public surface is a property and so it defines no symbol the corpus can
+    name either. `<Project>.Tests` is to a C# solution exactly what `tests/` is to a Python
+    package, and it has to scope the same way.
+    """
+    with repo() as root:
+        write(root, "Fixture/Fixturemod.cs", MODULE_CS)
+        write(root, "Fixture.Tests/FixturemodTests.cs", "public class T { public void A() { } }\n")
+
+        assert covered(root) == []
+
+
+def test_a_dotnet_test_project_does_not_reach_into_a_sibling_project():
+    """The narrowing that makes the widening safe: `A.Tests` claims `A`, never `B`."""
+    with repo() as root:
+        write(root, "Fixture/Fixturemod.cs", MODULE_CS)
+        write(root, "Other/Fixturemod.cs", MODULE_CS)
+        write(root, "Fixture.Tests/FixturemodTests.cs", "public class T { public void A() { } }\n")
+
+        found = covered(root)
+
+        assert [v.path.parent.name for v in found] == ["Other"]
+
+
+def test_a_dotnet_test_project_with_no_matching_project_claims_only_itself():
+    """`Standalone.Tests` beside no `Standalone/` must not silently widen to the repo root."""
+    with repo() as root:
+        write(root, "Fixture/Fixturemod.cs", MODULE_CS)
+        write(root, "Standalone.Tests/FixturemodTests.cs", "public class T { public void A() { } }\n")
+
+        assert len(covered(root)) == 1
 
 
 def test_a_test_beside_the_module_covers_it():

@@ -30,8 +30,9 @@ In rough order of preference. Pick the first that fits the stack.
    values under the user profile), Django's environment-backed settings, Laravel's `.env`. The
    value sits outside the repo while staying tied to the project, and no `.gitignore` line has
    to be right for it to stay out.
-2. **A gitignored `.env`.** Fine, and the estate already relies on it — but it depends on the
-   ignore rule remaining correct, so check `git check-ignore .env` rather than assuming.
+2. **A gitignored `.env`.** Fine, and the estate already relies on it — but only the repo's own
+   `.gitignore` counts; a global ignore is a backstop that does not travel with the clone
+   (`self-contained-repo.md`). Check with it off: `git -c core.excludesFile= check-ignore -v .env`.
    `.env.example` is committed and carries the **key names with empty values**.
 3. **Generated at first run and printed once.** The strongest option where it fits: nothing to
    leak because nothing was written down. Good for a first-admin bootstrap, awkward for a demo

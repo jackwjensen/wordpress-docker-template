@@ -1,12 +1,25 @@
 version: 2
 updates:
-  # Base image (Dockerfile FROM) and image tags in the compose files.
+  # Base images (Dockerfile FROM). Every tag is pinned to one exact release, so these
+  # proposals are how a pin moves.
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: monthly
     groups:
       docker:
+        patterns: ["*"]
+    commit-message:
+      prefix: docker
+
+  # Image tags in the compose files (mysql) -- a separate ecosystem; `docker` reads
+  # only Dockerfiles.
+  - package-ecosystem: docker-compose
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      docker-compose:
         patterns: ["*"]
     commit-message:
       prefix: docker

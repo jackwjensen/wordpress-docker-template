@@ -22,6 +22,7 @@ Source of truth: engineering-standards/engineering_standards/standards_dispatch_
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
+from itertools import chain
 from pathlib import Path
 
 from standards_checks import (
@@ -31,6 +32,7 @@ from standards_checks import (
     check_container_user,
     check_deploy_gate,
     check_deploy_host_key,
+    check_deploy_pull,
     check_deploy_ssh_user,
     check_env_example,
     check_overlay_name,
@@ -40,6 +42,7 @@ from standards_checks import (
 from standards_compose import COMPOSE_FILENAME, ENV_EXAMPLE_FILENAME
 from standards_config import CheckConfig
 from standards_core import Violation
+from standards_deps_pinning import check_unpinned_dependencies
 from standards_ef_provider import check_ef_core_support, check_ef_provider_support
 from standards_node_support import check_node_runtime_support
 from standards_packages import check_dependency_holdback, check_package_wildcards
@@ -49,6 +52,7 @@ from standards_scope import (
     COMPOSER_FILENAME,
     CONFIG_FILENAME,
     DEPENDABOT_FILENAME,
+    DEPENDENCY_MANIFEST_FILENAME,
     DOCKERFILE_FILENAME,
     NVMRC_FILENAME,
     PACKAGE_JSON_FILENAME,
@@ -172,6 +176,16 @@ def _dependabot(path: Path, lines: list[str], config: CheckConfig, repo_root: Pa
     yield from check_dependency_holdback(path, lines)
 
 
+def _dependency_manifest(path: Path, lines: list[str], config: CheckConfig, repo_root: Path) -> Rules:
+    """`global.json`, `dotnet-tools.json`, `Directory.*.props`, `compose.yml`, `action.yml`.
+
+    In scope for dependency-unpinned ONLY, which `non_source_rules` applies to every entry --
+    so this handler yields nothing itself. Terminal for the same reason as `_config_file`: it
+    keeps the source rules (length, naming) off files they have no opinion about.
+    """
+    return ()
+
+
 def _config_file(path: Path, lines: list[str], config: CheckConfig, repo_root: Path) -> Rules:
     """In scope for the credential rule ONLY, which already ran above the dispatch.
 
@@ -189,6 +203,9 @@ def _workflow(path: Path, lines: list[str], config: CheckConfig, repo_root: Path
     # properties rather than conventions a repo gets to opt out of.
     yield from check_deploy_ssh_user(path, lines)
     yield from check_deploy_host_key(path, lines)
+    # Ungated for the same reason: an unpulled image is an unpatched one, which is a security
+    # property and not a convention.
+    yield from check_deploy_pull(path, lines)
     # Not gated either: an out-of-date action has nothing to do with the deployment contract,
     # and a repo that opts out of compose rules still runs CI.
     yield from check_action_versions(path, lines)
@@ -233,6 +250,7 @@ DISPATCH: tuple[tuple[Matcher, Handler], ...] = (
     (lambda path, root: bool(REQUIREMENTS_FILENAME.match(path.name)), _requirements),
     (lambda path, root: bool(PACKAGE_JSON_FILENAME.match(path.name)), _package_json),
     (lambda path, root: bool(DEPENDABOT_FILENAME.match(path.name)), _dependabot),
+    (lambda path, root: bool(DEPENDENCY_MANIFEST_FILENAME.match(path.name)), _dependency_manifest),
     (lambda path, root: bool(CONFIG_FILENAME.match(path.name)), _config_file),
     (is_workflow, _workflow),
 )
@@ -247,5 +265,8 @@ def non_source_rules(path: Path, lines: list[str], config: CheckConfig, repo_roo
     """
     for matches, handler in DISPATCH:
         if matches(path, repo_root):
-            return handler(path, lines, config, repo_root)
+            # dependency-unpinned beside EVERY handler rather than inside each: whether a file
+            # declares versions is decided by the shared reader, not by which row matched, so
+            # a new manifest type cannot be added here with the pin check quietly missing.
+            return chain(check_unpinned_dependencies(path, lines, repo_root), handler(path, lines, config, repo_root))
     return None

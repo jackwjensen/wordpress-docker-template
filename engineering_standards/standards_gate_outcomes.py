@@ -87,6 +87,22 @@ NOTE_LINE = re.compile(r"^\s*(?:exempt|tuned):")
 
 MAX_DETAIL_LINES = 15
 
+# A line a PASSING gate wants seen. verify.py prints only `ok <name>` for a pass and discards the
+# output, which is right for build noise and wrong for a decision that let the run through: the
+# dependency gate passes BECAUSE of a dated deferral, and decision 3 of the 2026-10-02 plan is
+# that every active deferral is visible on every run. A gate prefixes such lines; verify shows
+# them under the gate's `ok`, and only them.
+NOTICE_PREFIX = "notice: "
+
+
+def notices(output: str) -> tuple[str, ...]:
+    """The `notice:` lines a gate printed, without the prefix, in order."""
+    return tuple(
+        line.strip().removeprefix(NOTICE_PREFIX.strip()).strip()
+        for line in output.splitlines()
+        if line.strip().startswith(NOTICE_PREFIX.strip())
+    )
+
 
 def tool_module_is_missing(command: list[str], output: str) -> bool:
     """Whether the missing module is the TOOL we invoked, not one of the project's own.

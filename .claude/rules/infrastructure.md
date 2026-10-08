@@ -46,7 +46,8 @@ outside the compose file — remap freely to hit the assigned host number.
 
 **Only one app runs at a time.** Running two simultaneously is explicitly *not* a supported
 case, and these numbers deliberately do not try to make it one — that is the trade that buys
-the memorability. When another project's container holds a port, stop it (see below).
+the memorability. When another project's container holds a port, check whether it is in use
+before touching it (see below) — and never answer the collision by moving *your* port.
 
 **8080 matters most.** It is where the app answers in every repo, and what the Cloudflare
 tunnel (`localtest.allegroit.dk`) points at — so inbound webhooks reach whichever app is
@@ -253,11 +254,30 @@ real answer is a destination off the host — a self-hosted receiver (Seq, Loki 
 small ingest service of our own) or a hosted one. Until that exists, journald is the cheapest
 thing that stops a deploy erasing the evidence. **Do not let its existence close the question.**
 
-## Cross-project collisions are routine — resolve them, don't ask
+## Cross-project collisions: parked is yours to stop, in use is not
 
-Only one Allegro IT app can hold `8080`. If another project's container has it, stop that
-container, bring yours up, and say so in the final summary. This is a standing decision and
-does not need confirming each time. Bring the displaced one back if it is practical.
+Only one Allegro IT app can hold `8080`. When another project's container holds a port you
+need, first decide whether it is **parked** or **in use** — several sessions share one Docker
+Desktop, and the container may be the one Jack is testing right now. (Decided 2026-09-28,
+replacing "resolve them, don't ask", after an InvoTrack session found `payvisia-db` on `3307`
+36 seconds after Jack had started it for a Payvisia test.)
+
+- **In use → stop and wait for Jack's explicit go-ahead.** Do not stop, restart, recreate or
+  `down` the other stack. Remove only your own half-created containers, say which container
+  holds which port and why you judged it in use, and wait. A go-ahead covers that one
+  collision, not the next.
+- **Signals that it is in use** — any one is enough: `Up` for less than ~2 hours or recreated
+  within that window; fresh request or query activity in `docker logs --since 30m`; another
+  session working in that project; Jack has said so. **Unsure counts as in use**: a paused
+  verification costs a message, a database pulled from under a live test costs the test.
+- **Parked** (idle for hours, no recent log activity) → stop it, bring yours up, say so in the
+  final summary, and bring the displaced one back if practical. No confirmation needed.
+
+**Never work around a collision by changing ports — not "temporarily", not in an override
+file, not with `-p`, not by editing `.env`.** A temporary remap is how a permanent one starts:
+it gets committed with the fix, or survives in an untracked override that silently changes
+the next run, and the registry above stops being true without anyone deciding it. The only
+answers to a collision are the two above — stop a parked container, or wait.
 
 ## One port means one browser origin, so local apps share a cookie jar
 

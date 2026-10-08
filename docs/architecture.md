@@ -15,8 +15,9 @@ nginx + PHP-FPM the same day; this template moved from Apache.
 - `Dockerfile` = `litespeedtech/openlitespeed:1.9.2-lsphp85` (Ubuntu 26.04, PHP 8.5.9;
   extensions a superset of the official image's except `pdo_sqlite`/`sqlite3`) + curl + pinned
   WP-CLI + `config/uploads.ini` (as `mods-available/zz-uploads.ini`, lsphp's ini scan dir).
-- WordPress core comes from the official `wordpress:7.1-php8.5-fpm` image (multi-stage `core`,
-  with `wp-config-docker.php` removed).
+- WordPress core comes from the official `wordpress:7.1.3-php8.5-fpm` image (multi-stage `core`,
+  with `wp-config-docker.php` removed). Every image and action is pinned to one exact release
+  (`mysql:8.4.11`, actions by commit SHA); Dependabot proposes the moves.
 - `docker/openlitespeed/` = server config (`httpd_config.conf`: `www-data`, `disableWebAdmin 1`,
   :8080 + :80 plain HTTP, the cache module), the vhost (`vhconf.conf`: `.htaccess` rewrites),
   `entrypoint.sh` (core install/upgrade → `make-wp-config.php` → configuration into the tmpfs →

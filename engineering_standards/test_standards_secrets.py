@@ -16,6 +16,7 @@ Run: python test_standards_secrets.py   (or pytest)
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tempfile
@@ -302,14 +303,45 @@ def test_source_and_config_get_different_advice() -> None:
 # which is exactly why it lasted. Found in ligelon-compliance, 2026-08-27.
 
 
+# These repos must answer to their OWN .gitignore and nothing else. A developer's global
+# ignore file outranks nothing here but still applies -- and git reads `~/.config/git/ignore`
+# even with `core.excludesFile` unset, so a global `.env` line made `git add .env` refuse, and
+# the "tracked" fixture silently held an untracked file: red on Jack's machine, green in CI,
+# found 2026-10-02. Config passed through GIT_CONFIG_COUNT has command-line precedence, so it
+# beats that implicit default without touching HOME. The SCANNER gets the same environment,
+# because it asks git what is tracked: isolating only the setup would build one repo and scan
+# another.
+def _isolated_git_env(tree: Path) -> dict[str, str]:
+    no_excludes = tree / "no-excludes"
+    no_excludes.write_text("", encoding="utf-8")
+    return {
+        **os.environ,
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": str(no_excludes),
+        "GIT_CONFIG_COUNT": "1",
+        "GIT_CONFIG_KEY_0": "core.excludesFile",
+        "GIT_CONFIG_VALUE_0": str(no_excludes),
+    }
+
+
 def _git(repo: Path, *arguments: str) -> None:
-    subprocess.run(["git", *arguments], cwd=repo, capture_output=True, text=True, check=False)
+    # check=True: a fixture step that fails must fail the test HERE. Swallowing it is what let
+    # a refused `git add` surface as an unrelated assertion about the scanner's output.
+    subprocess.run(
+        ["git", *arguments],
+        cwd=repo,
+        env=_isolated_git_env(repo.parent),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
 
 
 def _scan(repo: Path) -> str:
     limits = Path(__file__).resolve().parent / "check-source-limits.py"
     done = subprocess.run(
         [sys.executable, str(limits), "--root", str(repo)],
+        env=_isolated_git_env(repo.parent),
         capture_output=True,
         text=True,
         check=False,

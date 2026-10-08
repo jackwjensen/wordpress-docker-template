@@ -38,8 +38,9 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
+from standards_deps_record import has_record
 from standards_gate_config import gate_overrides, project_overrides
-from standards_gate_outcomes import absent_toolchain_reason, failure_detail
+from standards_gate_outcomes import absent_toolchain_reason, failure_detail, notices
 from standards_git import trunk_ref
 from standards_pack_identity import PACK_DIRECTORY, is_the_pack_itself
 
@@ -93,6 +94,8 @@ class GateResult:
     gate: Gate
     outcome: Outcome
     detail: str = ""
+    # What a PASSING gate still wants seen (its `notice:` lines) -- see standards_gate_outcomes.
+    notices: tuple[str, ...] = ()
 
     @property
     def is_failure(self) -> bool:
@@ -109,6 +112,10 @@ def build_gates(repo_root: Path, stage: Stage, scanner_format: str = "text") -> 
         # set would add more complexity than it saves time.
         gates += python_gates(repo_root, ruff_only=True)
         return gates
+
+    # Second, right after the scanner: seconds at most (one-hour cache), and a release nobody
+    # has looked at should stop the push before a build spends minutes on it.
+    gates += dependency_gates(repo_root)
 
     if any(repo_root.glob("*.sln")):
         gates.append(Gate("dotnet build", ["dotnet", "build", "--nologo", "-warnaserror"], repo_root))
@@ -151,6 +158,29 @@ def build_gates(repo_root: Path, stage: Stage, scanner_format: str = "text") -> 
     gates += python_gates(repo_root)
 
     return gates
+
+
+def dependency_gates(repo_root: Path) -> list[Gate]:
+    """Every pinned dependency against its registry (deps.py check), at push only.
+
+    PUSH ONLY because it needs the network, and a commit must work on a train. Present only
+    where the repository has ADOPTED it -- a `.standards-dependencies.json` exists -- because
+    the gate blocks, and a pack sync must never start blocking a repository that has not been
+    converted to exact pins (rollout is one repo at a time, plan 2026-10-02 phase 5). A repo
+    without the record has no gate, exactly as a repo without a `*.sln` has no dotnet build.
+    """
+    script = repo_root / PACK_DIRECTORY / "deps.py"
+    if not script.is_file() or not has_record(repo_root):
+        return []
+    return [
+        Gate(
+            "dependencies",
+            # `--root` belongs to deps.py itself, so it precedes the subcommand; after it, argparse
+            # refuses it and every push would fail on a usage error (caught by test_verify_cli).
+            [python_interpreter(repo_root, repo_root), str(script), "--root", str(repo_root), "check"],
+            repo_root,
+        )
+    ]
 
 
 def source_limit_gates(repo_root: Path, stage: Stage, scanner_format: str = "text") -> list[Gate]:
@@ -365,7 +395,7 @@ def run_gate(gate: Gate) -> GateResult:
         return GateResult(gate, Outcome.FAILED, f"timed out after {GATE_TIMEOUT_SECONDS}s")
 
     if completed.returncode == 0:
-        return GateResult(gate, Outcome.PASSED)
+        return GateResult(gate, Outcome.PASSED, notices=notices((completed.stdout or "") + (completed.stderr or "")))
 
     output = (completed.stdout or "") + (completed.stderr or "")
 

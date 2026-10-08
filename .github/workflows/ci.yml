@@ -25,13 +25,13 @@ jobs:
     env:
       MYSQL_ROOT_PASSWORD: ci-validate-only # standards: committed-credential exempt -- fake value for `docker compose config` only; no database ever starts with it
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: ShellCheck
         run: shellcheck scripts/*.sh dev.sh tests/*.sh docker/openlitespeed/*.sh
 
       - name: Hadolint (Dockerfile)
-        uses: hadolint/hadolint-action@v3.5.0
+        uses: hadolint/hadolint-action@06be81baf89a55ffd0e24b8f04a4185738dd3387 # v3.5.0
         with:
           dockerfile: Dockerfile
 
@@ -44,7 +44,7 @@ jobs:
         run: docker compose -f docker-compose.yml -f docker-compose.production.yml config -q
 
       - name: actionlint
-        uses: docker://rhysd/actionlint:latest
+        uses: docker://rhysd/actionlint:1.7.12
         with:
           args: -color
 
@@ -53,7 +53,7 @@ jobs:
 
       # Engineering standards (engineering-standards pack, ci/check-php.yml).
       # setup-python v6+ is the first major on the node24 runtime.
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.14'
 
@@ -64,10 +64,11 @@ jobs:
           docker run --rm -v "$PWD:/repo" -w /repo php:8.5-cli \
             sh -c 'find . -name "*.php" -not -path "./vendor/*" -print0 | xargs -0 -n1 php -l'
 
-      # ruff AND pytest: `verify.py --strict` turns a skipped gate into a failure. ruff is
-      # pinned because `ruff format --check` output changes between releases.
+      # ruff AND pytest: `verify.py --strict` turns a skipped gate into a failure. Installed
+      # from the pack's own declaration (exact pins), never versions typed in here — see
+      # .claude/rules/self-contained-repo.md.
       - name: Install test dependencies
-        run: python -m pip install --upgrade pip pytest "ruff==0.16.5"
+        run: python -m pip install -r engineering_standards/requirements.txt
 
       # The scanner's own cases — the whole directory, never a list of files.
       - name: Scanner tests
@@ -80,7 +81,7 @@ jobs:
     name: Build image & smoke test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build image and run smoke test
         # Retry to ride out transient Docker Hub pull rate-limits on shared runners.
@@ -122,7 +123,7 @@ jobs:
 
       - name: Deploy over SSH
         if: env.DEPLOY_HOST != ''
-        uses: appleboy/ssh-action@v1.2.5
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1.2.5
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           # A named non-root user in the docker group (scripts/setup-server.sh creates it).
@@ -153,8 +154,15 @@ jobs:
             git pull origin master
             docker image prune -f --filter "until=72h" || true
 
-            # Rebuild the image and recreate containers.
-            docker compose up --build --force-recreate -d
+            # Fetch what the pinned tags name: the images run as-is (mysql), then the FROM
+            # images of what this repo builds -- official images are rebuilt under the same
+            # tag for security patches, and a server that never pulls keeps its first copy.
+            # The rollback above stays unpulled: it must not need the registry.
+            docker compose pull --ignore-buildable
+            docker compose build --pull
+
+            # Recreate the containers from what was just pulled and built.
+            docker compose up --force-recreate -d
 
             # Verify WordPress actually SERVES HTTP, not merely that containers are
             # "running" (a container can be up while WordPress returns 500 on a DB

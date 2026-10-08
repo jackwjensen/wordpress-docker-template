@@ -30,6 +30,14 @@ all ten deploy workflows in nine repos shared the same three properties:
                         image; once that write was removed, nothing outside the volumes was
                         written and the setting became free.
 
+  deploy-no-pull        added 2026-09-28. Not one of the ten deploy scripts ever pulled, so
+                        the server kept the first copy of every tag it had downloaded:
+                        `mysql:8.4` was seven months old and `nginx:1.27-alpine` seventeen,
+                        while the tags upstream had moved on with their security patches.
+                        Since 2026-10-02 tags are pinned exactly and moved by the dependency
+                        gate; the pull is still what fetches a newly pinned tag onto the box,
+                        and what picks up an official image rebuilt under the same tag.
+
 None of the first three had ever failed, which is the point: they are not bug reports, they
 are the properties that decide how bad an unrelated bug is allowed to get.
 
@@ -73,6 +81,27 @@ FINGERPRINT_INPUT = re.compile(r"^\s*fingerprint:\s*\S", re.IGNORECASE)
 # step's inputs stop, so a `fingerprint:` belonging to a LATER step -- or to a second deploy
 # target in the same workflow -- cannot be read as satisfying an earlier one.
 STEP_BOUNDARY = re.compile(r"^\s*-\s+(?:name|uses|id|run):", re.IGNORECASE)
+
+# `docker compose` and the legacy `docker-compose`, with any global flags (`-p x`, `-f a.yml`)
+# between the binary and the subcommand.
+_COMPOSE = r"\bdocker(?:\s+|-)compose\b[^#\n]*?\s"
+
+# A line that BUILDS an image from a Dockerfile: the compose `build` subcommand, `up --build`,
+# or plain `docker build` / `docker buildx build`. The subcommand needs whitespace before it,
+# which is what keeps `--build` from being read as the `build` subcommand.
+BUILDS_IMAGE = re.compile(rf"{_COMPOSE}build\b|{_COMPOSE}up\b.*--build\b|\bdocker\s+(?:buildx\s+)?build\b")
+
+# A build that refreshes its base image. `up --build` is deliberately NOT accepted, even with
+# `--pull always`: that flag is documented for the images compose PULLS, and whether it also
+# reaches the FROM line of the images it BUILDS has varied between compose releases. An
+# explicit `build --pull` has meant one thing in every release.
+PULLED_BUILD = re.compile(rf"(?:{_COMPOSE}build\b|\bdocker\s+(?:buildx\s+)?build\b).*--pull\b")
+
+# A line that STARTS the stack, and therefore runs whatever third-party images it names.
+STARTS_STACK = re.compile(rf"{_COMPOSE}up\b")
+
+# A refresh of the images compose runs but does not build (mysql, redis, nginx).
+PULLED_IMAGES = re.compile(rf"{_COMPOSE}pull\b|\bdocker\s+pull\b|{_COMPOSE}up\b.*--pull[\s=]+always\b")
 
 DOCKERFILE_FROM = re.compile(r"^\s*FROM\s+\S+", re.IGNORECASE)
 DOCKERFILE_USER = re.compile(r"^\s*USER\s+(?P<value>\S+)", re.IGNORECASE)
@@ -150,6 +179,57 @@ def check_deploy_host_key(path: Path, lines: list[str]) -> Iterable[Violation]:
                 "offering both, the fingerprint you are shown is usually NOT the one the "
                 "deploy checks -- and the mismatch error names no algorithm. Try "
                 "`ssh-keyscan -t ecdsa <host> | ssh-keygen -lf -` first."
+            ),
+        )
+
+
+def check_deploy_pull(path: Path, lines: list[str]) -> Iterable[Violation]:
+    """Flag an SSH deploy step that builds or starts containers without pulling first.
+
+    Judged per STEP, on presence, like the host-key rule -- not per command line. A deploy
+    script legitimately builds without pulling in one place: its rollback, which rebuilds the
+    previous commit and must not take a dependency on the registry being reachable at the
+    moment everything else has already gone wrong. Requiring `--pull` on every build line
+    would push exactly that dependency into the failure path.
+
+    Two halves, because the two kinds of image go stale separately:
+
+    * the BASE images of what the stack builds, refreshed only by `build --pull`;
+    * the THIRD-PARTY images it runs as they are (mysql, redis), refreshed only by a pull.
+
+    A step whose stack happens to build every service still needs the second half. The
+    command is then a no-op, and it is required anyway: the first third-party service added
+    to that compose file would otherwise go stale with nothing to say so.
+
+    Shell comment lines are skipped, or a comment ABOUT pulling would satisfy the rule.
+    """
+    for start, end in _ssh_action_steps(lines):
+        commands = [line for line in lines[start:end] if not line.lstrip().startswith("#")]
+        missing: list[str] = []
+        if any(BUILDS_IMAGE.search(line) for line in commands) and not any(
+            PULLED_BUILD.search(line) for line in commands
+        ):
+            missing.append("`docker compose build --pull` (base images of what it builds)")
+        if any(STARTS_STACK.search(line) for line in commands) and not any(
+            PULLED_IMAGES.search(line) for line in commands
+        ):
+            missing.append("`docker compose pull --ignore-buildable` (the images it runs as-is)")
+        if not missing:
+            continue
+        if line_exemption_reason(lines, start, "deploy-no-pull"):
+            continue
+        yield Violation(
+            path=path,
+            line=start + 1,
+            rule="deploy-no-pull",
+            message=(
+                f"this deploy step runs containers without refreshing their images; add "
+                f"{' and '.join(missing)} before the forward `up`. Without a pull the server "
+                f"keeps the first copy of every tag it ever downloaded: a newly pinned tag is "
+                f"never fetched, and an official image rebuilt under the same tag for a "
+                f"security patch never arrives. Leave the ROLLBACK path unpulled: it must not depend on the registry "
+                f"at the moment the deploy has already failed. `--ignore-buildable` matters -- "
+                f"without it, compose tries to pull the images this repo builds and fails."
             ),
         )
 
