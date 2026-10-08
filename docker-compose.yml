@@ -62,7 +62,7 @@ services:
         condition: service_healthy
 
   mysql:
-    image: mysql:8.4.11
+    image: mysql:26.7.0
     container_name: ${COMPOSE_PROJECT_NAME:-wordpress}-db
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env - ./dev.sh up generates it}
