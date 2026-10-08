@@ -10,6 +10,8 @@
 #   5. Permalinks via .htaccess                     (wp rewrite flush --hard, pretty URL serves)
 #   6. A restart keeps the secret keys and an imported table prefix; WORDPRESS_DEBUG=false is off
 #   7. Core follows the image: an older core is upgraded, a newer one never downgraded
+#   8. Hardening: the server, lsphp and WP-CLI run as www-data, the root filesystem is read-only,
+#      and `wp` is the image's pinned WP-CLI, not the base image's own copy
 #
 # Runs as its own Compose project (`wordpress-smoke`) with no published ports
 # (tests/docker-compose.smoke.yml), probing from inside the container — so it never touches the
@@ -26,6 +28,9 @@ URL="http://localhost:8080"
 export COMPOSE_PROJECT_NAME=wordpress-smoke
 export COMPOSE_PATH_SEPARATOR=:
 export COMPOSE_FILE=docker-compose.yml:tests/docker-compose.smoke.yml
+# A fresh password per run, for a database that lives only as long as the test.
+MYSQL_ROOT_PASSWORD="smoke-$(head -c 18 /dev/urandom | base64 | tr -dc 'A-Za-z0-9')"
+export MYSQL_ROOT_PASSWORD
 COMPOSE=(docker compose)
 
 cleanup() { "${COMPOSE[@]}" down -v >/dev/null 2>&1 || true; }
@@ -33,7 +38,7 @@ trap cleanup EXIT
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 in_wp() { "${COMPOSE[@]}" exec -T wordpress "$@"; }
-wp() { "${COMPOSE[@]}" exec -T -u www-data wordpress wp "$@"; }
+wp() { "${COMPOSE[@]}" exec -T wordpress wp "$@"; }
 # shellcheck disable=SC2016  # PHP's $wp_version, single-quoted on purpose
 installed_version() { in_wp php -r 'include "/var/www/html/wp-includes/version.php"; echo $wp_version;'; }
 restart_wp() {
@@ -50,6 +55,12 @@ bash scripts/healthcheck.sh "http://localhost/" 5 2 wordpress
 
 echo "==> Asserting the web server is LiteSpeed"
 in_wp curl -sI "$URL/" | grep -qi '^server: litespeed' || fail "no 'Server: LiteSpeed' header"
+
+echo "==> Asserting nothing runs as root, the root filesystem is read-only, and wp is pinned"
+root_processes="$(in_wp ps -eo user=,args= | grep -E 'openlitespeed|lsphp' | grep -v '^www-data' || true)"
+[ -z "$root_processes" ] || fail "OpenLiteSpeed or lsphp running as another user than www-data: $root_processes"
+in_wp sh -c 'touch /usr/local/lsws/smoke-write 2>/dev/null' && fail "the container's root filesystem is writable"
+[ "$(in_wp sh -c 'command -v wp')" = "/usr/local/bin/wp" ] || fail "wp is not the image's pinned /usr/local/bin/wp"
 
 echo "==> Asserting baked-in PHP upload_max_filesize is 256M (CLI and lsphp)"
 limit="$(in_wp php -r 'echo ini_get("upload_max_filesize");' | tr -d '[:space:]')"
@@ -79,11 +90,26 @@ printf '%s' "$install_html" | grep -qi "wordpress" || fail "install page did not
 wp core install --url="$URL" --title=Smoke --admin_user=smoke \
   --admin_password="$(head -c 18 /dev/urandom | base64)" --admin_email=smoke@example.com --skip-email --quiet
 
-echo "==> Asserting permalinks work through .htaccess"
+echo "==> Asserting permalinks work through .htaccess, and a changed .htaccess is applied"
+# OpenLiteSpeed keeps the .htaccess it loaded until it restarts; the entrypoint's watcher
+# restarts it gracefully within ~5 s of a change. Wait for that, never for a fixed sleep.
+status_within() { # <path> <expected status> -> succeeds once the path answers that status
+  local tries=0 status=""
+  while [ "$tries" -lt 20 ]; do
+    status="$(in_wp curl -s -o /dev/null -w '%{http_code}' "$URL$1")"
+    [ "$status" = "$2" ] && return 0
+    tries=$((tries + 1)); sleep 1
+  done
+  echo "$1 answered HTTP $status, expected $2" >&2; return 1
+}
+# The docroot has been served without an .htaccess by now (health checks, the install), so
+# this also proves a NEW .htaccess is picked up, not only one present at start.
 wp rewrite structure '/%postname%/' --hard --quiet
 in_wp grep -q 'BEGIN WordPress' /var/www/html/.htaccess || fail "wp rewrite flush --hard wrote no .htaccess rules"
-status="$(in_wp curl -s -o /dev/null -w '%{http_code}' "$URL/hello-world/")"
-[ "$status" = "200" ] || fail "pretty permalink /hello-world/ returned HTTP $status"
+status_within /hello-world/ 200 || fail "pretty permalink /hello-world/ never served (new .htaccess not applied)"
+# An edit to the now-loaded file, ahead of WordPress's catch-all rule.
+in_wp sh -c '{ printf "RewriteEngine On\nRewriteRule ^smoke-redirect$ / [R=302,L]\n"; cat /var/www/html/.htaccess; } > /tmp/smoke.htaccess && cat /tmp/smoke.htaccess > /var/www/html/.htaccess'
+status_within /smoke-redirect 302 || fail "an edited .htaccess was never applied"
 
 echo "==> Asserting a restart keeps the secret keys and an imported table prefix"
 keys_before="$(in_wp grep "'AUTH_KEY'" /var/www/html/wp-config.php)"

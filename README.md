@@ -50,7 +50,8 @@ cp .env.example .env          # set COMPOSE_PROJECT_NAME=my-site
 ```
 
 Open <http://localhost:8080> and finish the WordPress install wizard. That's it —
-you're developing.
+you're developing. (`dev.sh up` generates a local database password into `.env` on
+its first run; no password is ever committed.)
 
 ## Features
 
@@ -63,7 +64,10 @@ you're developing.
   plus a build + smoke test (see the badge above).
 - **Published image** on GHCR, built and released from a version tag (keyless).
 - **Optional one-push deploy** over SSH with **automatic rollback** if WordPress
-  fails to serve afterwards — dormant until you configure a target.
+  fails to serve afterwards — only after CI passes, as a non-root user, with the
+  server's host key pinned; dormant until you configure a target.
+- **Hardened container**: nothing runs as root, and the root filesystem is
+  read-only — WordPress writes only to its volumes.
 - **WP-CLI** in the image — locally and on the server.
 
 ## Architecture
@@ -73,17 +77,21 @@ the environment-specific bits.
 
 | | Local (`docker-compose.yml`) | Production (`+ docker-compose.production.yml`) |
 | --- | --- | --- |
-| WordPress | Built from `Dockerfile`, OpenLiteSpeed on port `8080:8080`, debug on | Same image, OpenLiteSpeed on `:80`, no published port, debug off, `DISALLOW_FILE_EDIT` |
-| MySQL | `127.0.0.1:3307` (this machine only), dev password | No published port, password from `.env` |
+| WordPress | Built from `Dockerfile`, OpenLiteSpeed on port `8080:8080`, debug on | Same image, OpenLiteSpeed on `:80`, no published port, debug off, `DISALLOW_FILE_EDIT` + `DISALLOW_FILE_MODS` |
+| MySQL | `127.0.0.1:3307` (this machine only) | No published port |
+| Database password | Generated into `.env` by `dev.sh up` | Generated into `.env` by `setup-server.sh` |
+| Container | `www-data`, read-only root filesystem | Same |
 | Restart policy | None — the stack runs only when you start it | `unless-stopped` on every service |
 | Networking | Default bridge only | Also joins an external reverse-proxy network |
-| Routing | Direct to `localhost:8080` | Reverse proxy → `<project>-wordpress:80` |
+| Routing | Direct to `localhost:8080` | Reverse proxy → `<project>-web:80` |
 
 Production merges both files via
 `COMPOSE_FILE=docker-compose.yml:docker-compose.production.yml` in the server's
 `.env`. Each site sets a unique `COMPOSE_PROJECT_NAME`, which names the containers
-(`<project>-wordpress`, `<project>-mysql`) so a reverse proxy can route to the
-right one.
+(`<project>-web`, `<project>-db`) so a reverse proxy can route to the right one.
+
+Production's themes and plugins come from git: WordPress cannot install or update
+them there (`DISALLOW_FILE_MODS`). Install and update plugins locally, commit, push.
 
 ## The image
 
@@ -133,19 +141,23 @@ why the image runs OpenLiteSpeed rather than Apache or nginx:
   the plugin's optimisation features (CSS/JS, images), not the page cache.
 - The server tells the plugin it can cache by setting `X-LSCACHE` (`on,crawler`)
   in `$_SERVER`. A response served from the cache carries `X-LiteSpeed-Cache: hit`.
-- Permalinks and the plugin's own rules live in **`.htaccess`**, which
-  OpenLiteSpeed reads (`autoLoadHtaccess`). WordPress writes it when Permalinks are
-  saved; from the command line, `dev.sh cli rewrite flush --hard` does the same.
+- Permalinks and the plugin's own rules live in **`.htaccess`**. WordPress writes it
+  when Permalinks are saved; from the command line, `dev.sh cli rewrite flush --hard`
+  does the same. OpenLiteSpeed only re-reads a changed `.htaccess` after a restart,
+  so the container watches it and restarts OpenLiteSpeed gracefully within about
+  five seconds of a change.
 
-Set it up on a site:
+Set it up on a site — locally, then commit `wp-content/plugins/litespeed-cache`
+(production does not install plugins itself):
 
 ```bash
 ./dev.sh cli plugin install litespeed-cache --activate
 ```
 
 `WP_CACHE` is already `true` in both compose files. Purge with
-`./dev.sh cli litespeed-purge all` (= the admin bar's "Purge All"). The cache lives
-inside the container, so a restart or deploy starts it empty.
+`./dev.sh cli litespeed-purge all` (= the admin bar's "Purge All"). The container
+empties the cache when it starts, so a restart or deploy never serves pages cached
+from the previous version.
 
 > **WooCommerce shops: turn "Cache REST API" off** —
 > `./dev.sh cli litespeed-option set cache-rest 0`. It is on by default, and it
@@ -172,15 +184,16 @@ Keep `WP_CACHE` true.
 | `dev.sh down` | Stop containers |
 | `dev.sh reset` | Destroy volumes and restart fresh |
 | `dev.sh logs` | Follow OpenLiteSpeed's error log and PHP's errors (files in the container, `/usr/local/lsws/logs/`) |
-| `dev.sh cli plugin list` | Run WP-CLI commands (inside the WordPress container, as `www-data`) |
+| `dev.sh cli plugin list` | Run WP-CLI commands (inside the WordPress container, which runs as `www-data`) |
 | `dev.sh backup` | Dump the database to `backups/` |
 | `dev.sh restore backups/file.sql` | Restore the database from a dump |
 
 (`dev.bat` provides the same commands on Windows.)
 
 Local ports: <http://localhost:8080> for the site and `127.0.0.1:3307` for MySQL
-(user `root`, password `WordPress_Dev123!` — local only). The stack has no restart
-policy, so it stays down after a Docker Desktop restart until you run `dev.sh up`.
+(user `root`, password: `MYSQL_ROOT_PASSWORD` in your `.env`). The stack has no
+restart policy, so it stays down after a Docker Desktop restart until you run
+`dev.sh up`.
 
 ## Running the tests
 
@@ -202,11 +215,12 @@ bash tests/healthcheck.test.sh               # fast: no Docker stack needed
 bash tests/smoke.sh                          # builds the image + brings up the stack
 ```
 
-`tests/smoke.sh` asserts that OpenLiteSpeed serves HTTP, that the baked-in
-`upload_max_filesize` is active, that LiteSpeed's page cache answers a cacheable
-page with a hit, that WordPress installs against MySQL, that permalinks work
-through `.htaccess`, that a restart keeps the secret keys and table prefix, and
-that core is upgraded from a newer image but never downgraded. It runs as its own
+`tests/smoke.sh` asserts that OpenLiteSpeed serves HTTP, that nothing runs as root
+and the root filesystem is read-only, that the baked-in `upload_max_filesize` is
+active, that LiteSpeed's page cache answers a cacheable page with a hit, that
+WordPress installs against MySQL, that permalinks work through `.htaccess` and an
+edited `.htaccess` is applied, that a restart keeps the secret keys and table
+prefix, and that core is upgraded from a newer image but never downgraded. It runs as its own
 Compose project (`wordpress-smoke`) with no published ports, so it never touches
 your dev stack's data and never needs port 8080.
 
@@ -215,20 +229,28 @@ your dev stack's data and never needs port 8080.
 Deployment is **optional and dormant until you configure it** — a fresh clone runs
 locally and passes CI with no deploy setup at all.
 
-The included workflow ([`deploy.yml`](.github/workflows/deploy.yml)) deploys over
-SSH to any Docker host on push to `master`. To activate it:
+The `deploy` job in [`ci.yml`](.github/workflows/ci.yml) deploys over SSH to any
+Docker host on push to `master` — only after the lint and smoke-test jobs pass. It
+logs in as a named non-root user (`deploy`, in the docker group) and verifies the
+server's host key. To activate it:
 
-1. Add two repository **secrets**:
+1. On the server, as root, run `./scripts/setup-server.sh <site-name> <repo-url>`
+   once (read its header first: the `deploy` user needs read access to the repo). It
+   creates the `deploy` user, clones the repo as that user, generates the DB
+   password, builds the image, starts the stack, and prints the values for step 2.
+2. Add three repository **secrets**:
    - `DEPLOY_HOST` — your server's host or IP
-   - `DEPLOY_SSH_KEY` — a private SSH key the server accepts
+   - `DEPLOY_SSH_KEY` — a private SSH key whose public half is in
+     `/home/deploy/.ssh/authorized_keys`
+   - `DEPLOY_HOST_FINGERPRINT` — the server's **ECDSA** host-key fingerprint
+     (`SHA256:…`), as printed by the setup script. ECDSA, not ed25519: the deploy
+     action is a Go SSH client, which negotiates ECDSA, and a wrong pin fails with
+     a mismatch that names no algorithm.
 
-   (Optional **variables** `DEPLOY_USER` and `DEPLOY_PATH` default to `root` and
+   (Optional **variables** `DEPLOY_USER` and `DEPLOY_PATH` default to `deploy` and
    `/opt/apps/<repo>`.)
-2. On the server, run `./scripts/setup-server.sh <site-name> <repo-url>` once — it
-   clones the repo, generates the DB password, builds the image, and starts the
-   stack.
 3. Put a reverse proxy in front for TLS and routing, pointing your domain at the
-   `wordpress` container on port **80**. Leave the proxy's "force HTTPS" off for
+   `<project>-web` container on port **80**. Leave the proxy's "force HTTPS" off for
    the upstream: OpenLiteSpeed speaks plain HTTP, and `wp-config.php` turns the
    proxy's `X-Forwarded-Proto` header into HTTPS for WordPress.
 4. Push to `master`. The workflow rebuilds, health-checks that WordPress actually
@@ -236,7 +258,7 @@ SSH to any Docker host on push to `master`. To activate it:
 
 > **Example setup (what Allegro IT runs in production):** a VPS with
 > [Nginx Proxy Manager](https://nginxproxymanager.com/) terminating TLS and routing
-> each site's domain to its `<project>-wordpress:80` container. Any Docker host plus
+> each site's domain to its `<project>-web:80` container. Any Docker host plus
 > a reverse proxy works the same way.
 
 ## Releasing
@@ -269,7 +291,9 @@ build-provenance attestation, and drafts release notes.
    Duplicator writes its own `wp-config.php`; the container rewrites it at the
    next start, keeping the secret keys and the imported table prefix. Then save
    Settings → Permalinks once, so `.htaccess` gets the rewrite rules.
-5. Commit the `wp-content/themes/` and `wp-content/plugins/` changes and push.
+5. Commit the `wp-content/themes/` and `wp-content/plugins/` changes and push, then
+   hand those folders back to the `deploy` user as the import script prints, so
+   the next deploy's `git pull` can write them.
 6. Sync the production DB to local: `./scripts/sync-db-from-prod.sh <site-name> example.com`
    (requires the `DEPLOY_HOST` env var; see the script's note about serialized data).
 
@@ -299,7 +323,8 @@ This template is yours to adopt. Two common paths — and they combine well:
    badges/links at the top of this README, and the OCI labels in the
    [`Dockerfile`](Dockerfile). The release workflow already publishes to
    `ghcr.io/<your-account>/<repo>` automatically — no edit needed.
-3. Add your own `DEPLOY_HOST` / `DEPLOY_SSH_KEY` secrets to deploy to your server.
+3. Add your own `DEPLOY_HOST` / `DEPLOY_SSH_KEY` / `DEPLOY_HOST_FINGERPRINT`
+   secrets to deploy to your server.
 4. Optionally remove the [Need a hand?](#need-a-hand) section.
 
 **Stay connected — pull future improvements**

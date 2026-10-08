@@ -1,21 +1,29 @@
 name: CI
 
+# Checks on every push and pull request; on master (or a manual run) the deploy job follows,
+# and only after both check jobs have passed. One workflow, so `needs:` can gate the deploy.
 on:
   push:
     branches: [master]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+# A newer push cancels an older run's CHECKS on a pull request, but never on master: there the
+# run may be deploying, and cancelling a deploy halfway leaves the server between two commits.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   lint:
     name: Lint & static checks
     runs-on: ubuntu-latest
+    # Both compose files require it; a fake value is enough for `docker compose config`.
+    env:
+      MYSQL_ROOT_PASSWORD: ci-validate-only # standards: committed-credential exempt -- fake value for `docker compose config` only; no database ever starts with it
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -33,7 +41,6 @@ jobs:
       - name: Validate Compose config (production merge)
         env:
           COMPOSE_PROJECT_NAME: ci
-          MYSQL_ROOT_PASSWORD: ci-validate-only # standards: committed-credential exempt -- fake value for `docker compose config` only; no database ever starts with it
         run: docker compose -f docker-compose.yml -f docker-compose.production.yml config -q
 
       - name: actionlint
@@ -85,3 +92,74 @@ jobs:
           done
           echo "::error::smoke test failed after 3 attempts"
           exit 1
+
+  deploy:
+    name: Deploy
+    needs: [lint, build-and-smoke]
+    if: github.ref == 'refs/heads/master' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    # Never two deploys at once; queue instead of cancelling.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    # Dormant until you point it at a server: with no DEPLOY_HOST secret (a fresh clone of the
+    # template) the deploy step is skipped and the job still succeeds.
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_HOST_FINGERPRINT: ${{ secrets.DEPLOY_HOST_FINGERPRINT }}
+    steps:
+      - name: Deployment target check
+        run: |
+          if [ -z "$DEPLOY_HOST" ]; then
+            echo "::notice::No DEPLOY_HOST secret set — skipping deploy. Set DEPLOY_HOST, DEPLOY_SSH_KEY and DEPLOY_HOST_FINGERPRINT to deploy to your own server."
+          elif [ -z "$DEPLOY_HOST_FINGERPRINT" ]; then
+            # Without a pinned host key the SSH step trusts whatever answers at that address.
+            echo "::error::DEPLOY_HOST is set but DEPLOY_HOST_FINGERPRINT is not. scripts/setup-server.sh prints it; see README, 'Deploy to your server'."
+            exit 1
+          else
+            echo "Deploy target configured; proceeding with deploy."
+          fi
+
+      - name: Deploy over SSH
+        if: env.DEPLOY_HOST != ''
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          # A named non-root user in the docker group (scripts/setup-server.sh creates it).
+          username: ${{ vars.DEPLOY_USER || 'deploy' }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          # The server's ECDSA host-key fingerprint (SHA256:...). This action is a Go client,
+          # which negotiates ECDSA where OpenSSH prefers ed25519 — so pin the ECDSA one.
+          fingerprint: ${{ secrets.DEPLOY_HOST_FINGERPRINT }}
+          script_stop: true
+          script: |
+            set -e
+            # Where this repo is checked out on the server. Override with the
+            # DEPLOY_PATH repository variable if your host uses another layout.
+            APP_DIR="${{ vars.DEPLOY_PATH || format('/opt/apps/{0}', github.event.repository.name) }}"
+            cd "$APP_DIR"
+
+            # Capture the current commit so we can roll back on failure.
+            PREV_COMMIT=$(git rev-parse HEAD)
+            rollback() {
+              echo "Deployment failed! Rolling back to $PREV_COMMIT..."
+              git checkout "$PREV_COMMIT"
+              docker compose up --build --force-recreate -d
+              echo "Rollback complete."
+              exit 1
+            }
+            trap rollback ERR
+
+            git pull origin master
+            docker image prune -f --filter "until=72h" || true
+
+            # Rebuild the image and recreate containers.
+            docker compose up --build --force-recreate -d
+
+            # Verify WordPress actually SERVES HTTP, not merely that containers are
+            # "running" (a container can be up while WordPress returns 500 on a DB
+            # or PHP error). Probes inside the container, so no host port is needed.
+            # A non-zero exit trips the ERR trap above and rolls the deploy back.
+            bash scripts/healthcheck.sh "http://localhost/" 30 5 wordpress
+
+            echo "Deployment successful!"

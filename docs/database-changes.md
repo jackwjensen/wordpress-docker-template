@@ -22,7 +22,7 @@ For a one-time or idempotent change the admin cannot make, add `migrate.php` to 
 run it from the deploy workflow, after the health check:
 
 ```yaml
-docker compose exec -T -u www-data wordpress wp eval-file wp-content/themes/<theme>/migrate.php || echo "Migration skipped"
+docker compose exec -T wordpress wp eval-file wp-content/themes/<theme>/migrate.php || echo "Migration skipped"
 ```
 
 `wp eval-file` bootstraps WordPress for you. A script run with plain `php` must bootstrap itself:
@@ -45,17 +45,20 @@ global $wpdb;
 
 ## Copy the production DB by hand (Windows)
 
-If the sync scripts don't work (SSH passphrase prompts, no bash):
+If the sync scripts don't work (SSH passphrase prompts, no bash), do it step by step. Each
+client runs inside the mysql container, which already holds `MYSQL_ROOT_PASSWORD` — so the
+password never appears on a command line (`$MYSQL_ROOT_PASSWORD` is expanded by the
+container's shell, not yours).
 
 1. **On the server** (SSH session):
    ```bash
    cd /opt/apps/<site-name>
-   docker compose exec -T mysql mysqldump -uroot -p$(grep MYSQL_ROOT_PASSWORD .env | cut -d= -f2) wordpress > /tmp/<site-name>-dump.sql
+   docker compose exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -uroot wordpress' > /tmp/<site-name>-dump.sql
    ```
 2. **On Windows** (cmd):
    ```cmd
-   scp root@<server-ip>:/tmp/<site-name>-dump.sql backups\prod_sync.sql
-   docker compose exec -T mysql mysql -uroot -pWordPress_Dev123! wordpress < backups\prod_sync.sql
-   docker compose exec mysql mysql -uroot -pWordPress_Dev123! wordpress -e "UPDATE wp_options SET option_value='http://localhost:8080' WHERE option_name IN ('siteurl','home');"
-   docker compose exec wordpress chown -R www-data:www-data /var/www/html/wp-content/uploads
+   scp <user>@<server-ip>:/tmp/<site-name>-dump.sql backups\prod_sync.sql
+   docker compose exec -T mysql sh -c "MYSQL_PWD=$MYSQL_ROOT_PASSWORD exec mysql -uroot wordpress" < backups\prod_sync.sql
+   echo UPDATE wp_options SET option_value='http://localhost:8080' WHERE option_name IN ('siteurl','home'); | docker compose exec -T mysql sh -c "MYSQL_PWD=$MYSQL_ROOT_PASSWORD exec mysql -uroot wordpress"
+   docker compose exec -u root wordpress chown -R www-data:www-data /var/www/html/wp-content/uploads
    ```

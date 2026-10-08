@@ -6,21 +6,56 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Upgrading a site already deployed from the Apache template
+### Upgrading a site already deployed from the 1.0.0 (Apache) template
 
-The first deploy with OpenLiteSpeed starts on an empty `wp-html` volume: the old
-container's `wp-config.php` and `.htaccess` are gone (they lived in the container,
-not a volume). Before that deploy:
+The first deploy of this version changes who deploys, what the container is called, and
+who owns its files. Do these in order; root stays a working fallback until the end.
 
-1. If the site's table prefix is not `wp_` (common after a Duplicator import —
-   check `$table_prefix` in the running container's `wp-config.php`), add
-   `WORDPRESS_TABLE_PREFIX: <prefix>` to the `wordpress` environment in
-   `docker-compose.production.yml`. Without it WordPress sees an empty database and
-   shows the install wizard — and the deploy health check counts that as healthy.
-2. After the deploy, write the permalink rules again:
-   `docker compose exec -u www-data wordpress wp rewrite flush --hard`.
-3. Expect everyone to be logged out once (new secret keys); after that they are
-   kept across deploys.
+**Before the deploy** (on the server, as root, in `/opt/apps/<site>`):
+
+1. **Table prefix.** The first OpenLiteSpeed start is on an empty `wp-html` volume — the
+   old container's `wp-config.php` and `.htaccess` lived in the container. If the site's
+   prefix is not `wp_` (common after a Duplicator import — check `$table_prefix` in the
+   running container's `wp-config.php`), add `WORDPRESS_TABLE_PREFIX: <prefix>` to the
+   `wordpress` environment in `docker-compose.production.yml`. Without it WordPress sees
+   an empty database and shows the install wizard — which the health check counts as
+   healthy.
+2. **The `deploy` user.** `useradd --create-home --shell /bin/bash deploy`,
+   `usermod -aG docker deploy`, `chown -R deploy:deploy /opt/apps/<site>`. Give it read
+   access to the repo (the GitHub deploy key and its `~/.ssh/config` alias, moved to
+   `/home/deploy/.ssh/`), and the CI key:
+   `grep github-actions /root/.ssh/authorized_keys >> /home/deploy/.ssh/authorized_keys`.
+   Verify as that user: `su - deploy -c 'cd /opt/apps/<site> && git pull && docker compose ps'`.
+   Leave root's `authorized_keys` alone until every site deploys green.
+3. **Host-key pin.** Add the `DEPLOY_HOST_FINGERPRINT` secret — the server's **ECDSA**
+   fingerprint: `ssh-keygen -lf /etc/ssh/ssh_host_ecdsa_key.pub` (the deploy action is a
+   Go SSH client, which negotiates ECDSA). Without it the deploy job now fails on
+   purpose.
+4. **Volume ownership** — chown first, deploy second. The container now runs as
+   `www-data` (uid 33) and cannot write a root-owned volume; the running old container is
+   unaffected by the chown:
+   `docker run --rm -v <site>_wp-uploads:/u alpine chown -R 33:33 /u`.
+
+**The deploy** — push. The containers are recreated as `<site>-web` / `<site>-db`
+(service names are unchanged, so no orphan clean-up is needed).
+
+**Right after the deploy:**
+
+5. **Reverse proxy:** point the site's proxy host at `<site>-web` port 80 (it targeted
+   `<site>-wordpress`). The public site answers 502 until this is done.
+6. Write the permalink rules: `docker compose exec wordpress wp rewrite flush --hard`
+   (applied within ~5 s), then load the public URL and confirm 200.
+7. Expect everyone to be logged out once (new secret keys); after that they are kept.
+
+**Rollback:** set the repository variable `DEPLOY_USER=root`, revert the commit and push
+(or on the server: `git checkout <previous> && docker compose up -d --build
+--force-recreate`), and point the proxy back at `<site>-wordpress`.
+
+**Local development stacks** from 1.0.0: the database volume was created with the old
+fixed local password. Before the first `./dev.sh up`, put `MYSQL_ROOT_PASSWORD=` with that
+old value (from the 1.0.0 `docker-compose.yml`) in `.env` to keep the volume — or let
+`dev.sh up` generate a new one and run `./dev.sh reset` (which deletes the local
+database).
 
 ### Changed
 
@@ -44,7 +79,32 @@ not a volume). Before that deploy:
   and the local stack has no restart policy any more — Allegro IT's dev port
   registry. Production is unchanged: no published ports, `restart: unless-stopped`.
 - `tests/smoke.sh` runs as its own Compose project with no published ports, and
-  also checks the page cache, permalinks via `.htaccess`, restarts and core sync.
+  also checks the page cache, permalinks via `.htaccess`, restarts, core sync, and
+  the hardening below.
+- **Nothing runs as root**: OpenLiteSpeed, lsphp, the entrypoint and WP-CLI run as
+  `www-data` (`USER` in the image; Docker lets it bind :80). The image no longer uses
+  the base image's root-only `/entrypoint.sh`.
+- **Read-only container**: `read_only: true`, with every measured write path a volume
+  (`wp-html`, `wp-uploads`, `ols-logs`, `ols-cache`) or a sized tmpfs. OpenLiteSpeed's
+  configuration is copied from the image into a tmpfs at every start.
+- **A changed `.htaccess` is applied automatically**: OpenLiteSpeed only reads it at
+  start, so the entrypoint restarts it gracefully within ~5 s of a change (permalink
+  saves, LiteSpeed Cache's rules). `docker stop` now stops it cleanly instead of being
+  killed after 10 s.
+- **Containers are named in the base file**, `<project>-web` and `<project>-db` (were
+  `<project>-wordpress` / `<project>-mysql`, production only). The proxy targets
+  `<project>-web:80`.
+- **No committed database password**: `MYSQL_ROOT_PASSWORD` comes from `.env`;
+  `dev.sh`/`dev.bat` generate it locally, `setup-server.sh` on a server. Scripts run
+  the mysql client inside the mysql container, which already holds it.
+- **Deploy gated, non-root, host key pinned**: the deploy job moved into `ci.yml` and
+  runs only after the check jobs pass (`deploy.yml` is gone); it logs in as `deploy`
+  (created by `setup-server.sh`) and requires `DEPLOY_HOST_FINGERPRINT`. CI no longer
+  cancels a run on `master` when a newer push arrives.
+- Production sets `DISALLOW_FILE_MODS`: themes and plugins come from git and are not
+  writable by WordPress there.
+- `wp` is now the image's pinned, checksum-verified WP-CLI: the base image's `PATH`
+  put its own `/usr/bin/wp` first.
 - Upgraded the base image to **WordPress 7.1** (from 7.0); MySQL 8.4 LTS is
   unchanged.
 - The image `HEALTHCHECK` now uses exec (JSON) form, as Hadolint DL3025 requires
@@ -59,6 +119,8 @@ not a volume). Before that deploy:
 - `tests/smoke.sh` ran under the dev stack's project name, so its closing
   `down -v` deleted the local development database.
 - `dev.bat cli` passed the word `cli` on to WP-CLI.
+- Line endings are pinned in `.gitattributes`: a clone without `core.autocrlf=true`
+  checked the batch files out LF-only, where cmd can miss their labels.
 
 ## [1.0.0] - 2026-06-22
 

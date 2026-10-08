@@ -14,14 +14,20 @@ type: reference
   health-check regression test, then the engineering-standards steps: PHP syntax check, the
   pack's scanner tests and `engineering_standards/verify.py --strict`.
 - **build-and-smoke**: builds the image and runs `tests/smoke.sh`.
+- **deploy** (push to `master` or a manual run, after both jobs above pass): SSH as `deploy`,
+  host key pinned, `git pull`, rebuild, health check, roll back on failure. Dormant without the
+  `DEPLOY_HOST` secret. A newer push cancels an older run's checks on a pull request, never on
+  `master`, so a deploy is never cut off halfway.
 
 ## Tests
 
-- `tests/smoke.sh` — end-to-end: build + up, then assert `Server: LiteSpeed` on :8080 and :80,
-  the upload limit (CLI and lsphp), `X-LSCACHE` + a real `X-LiteSpeed-Cache: hit`, a WP-CLI
-  install against MySQL, a pretty permalink through `.htaccess`, salts + an imported table prefix
-  surviving a restart, `WORDPRESS_DEBUG=false` → off, and core upgraded from the image but never
-  downgraded. Runs as Compose project `wordpress-smoke` with no published ports (probes inside
+- `tests/smoke.sh` — end-to-end: build + up, then assert `Server: LiteSpeed` on :8080 and :80;
+  OpenLiteSpeed and lsphp running as `www-data`, the root filesystem read-only, `wp` the pinned
+  WP-CLI; the upload limit (CLI and lsphp); `X-LSCACHE` + a real `X-LiteSpeed-Cache: hit`; a
+  WP-CLI install against MySQL; a pretty permalink through a NEW `.htaccess`, and an EDITED one
+  applied (the restart watcher); salts + an imported table prefix surviving a restart;
+  `WORDPRESS_DEBUG=false` → off; and core upgraded from the image but never downgraded. It
+  generates a throwaway `MYSQL_ROOT_PASSWORD` per run. Runs as Compose project `wordpress-smoke` with no published ports (probes inside
   the container via `COMPOSE_PROJECT_NAME`/`COMPOSE_FILE`), so it never deletes the dev stack's
   volumes and never needs host port 8080 — safe to run locally while another project holds 8080.
 - `tests/healthcheck.test.sh` — proves `scripts/healthcheck.sh` fails when WordPress is not
@@ -72,7 +78,8 @@ wordpress-docker-template → Package settings) for anonymous pulls.
 | `docker-compose.yml`, `docker-compose.production.yml` | Base + local dev; production overrides |
 | `tests/docker-compose.smoke.yml` | Smoke-test overrides (no volumes, no published ports) |
 | `.env.example` | Template for `.env` |
-| `.github/workflows/ci.yml`, `deploy.yml`, `release.yml` | CI; deploy on push; tag → GHCR + GitHub Release |
+| `.github/workflows/ci.yml` | Checks on every push/PR, then the deploy on `master` |
+| `.github/workflows/release.yml` | Tag `v*` → GHCR + GitHub Release |
 | `config/uploads.ini` | PHP upload limits (256M) |
 | `scripts/setup-server.sh` | One-time server setup (clones, creates .env, builds + starts containers, fixes permissions) |
 | `scripts/import-duplicator.sh` | Copies Duplicator files into the container |

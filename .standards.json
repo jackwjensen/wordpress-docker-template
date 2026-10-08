@@ -18,6 +18,7 @@
     ],
     "prefixes": [
       "pll_",
+      "appleboy/",
       "_elementor_",
       "ghcr.io/",
       "/usr/local/",

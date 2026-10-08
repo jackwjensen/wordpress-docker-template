@@ -18,8 +18,8 @@
 #   (docker/openlitespeed/make-wp-config.php) — anything else Duplicator put there is
 #   dropped. Put lasting settings in WORDPRESS_CONFIG_EXTRA.
 # - After the import, re-save Settings → Permalinks (or run
-#   `docker compose exec -u www-data wordpress wp rewrite flush --hard`) so .htaccess
-#   gets the permalink rules OpenLiteSpeed reads.
+#   `docker compose exec wordpress wp rewrite flush --hard`) so .htaccess gets the permalink
+#   rules; the container restarts OpenLiteSpeed gracefully to apply them.
 
 set -euo pipefail
 
@@ -36,12 +36,24 @@ if [ ! -f "$ARCHIVE" ]; then
   exit 1
 fi
 
-echo "Fixing wp-content permissions..."
-docker compose exec -T wordpress chown -R www-data:www-data /var/www/html/wp-content
+# Duplicator extracts the site's themes and plugins into wp-content, which on a server is
+# bind-mounted from the deploy user's checkout. The container runs as www-data, so hand
+# wp-content to it for the import (-u root: www-data cannot chown files it does not own).
+echo "Giving wp-content to www-data for the import..."
+docker compose exec -T -u root wordpress chown -R www-data:www-data /var/www/html/wp-content
 
+# Streamed in through exec rather than `docker compose cp`: the container's root filesystem is
+# read-only, and this writes into the wp-html volume as www-data.
+# The target path goes in as an argument ($1), never spliced into the shell string, so a
+# filename with spaces or quotes cannot change the command.
+copy_into_docroot() {
+  local source_file="$1" target_path
+  target_path="/var/www/html/$(basename "$source_file")"
+  docker compose exec -T wordpress sh -c 'cat > "$1"' sh "$target_path" < "$source_file"
+}
 echo "Copying Duplicator files into WordPress container..."
-docker compose cp "$INSTALLER" wordpress:/var/www/html/
-docker compose cp "$ARCHIVE" wordpress:/var/www/html/
+copy_into_docroot "$INSTALLER"
+copy_into_docroot "$ARCHIVE"
 
 echo ""
 echo "=== Files copied ==="
@@ -54,4 +66,12 @@ echo "  Name:     wordpress"
 echo "  User:     root"
 echo "  Password: see MYSQL_ROOT_PASSWORD in $(pwd)/.env"
 echo "            (e.g. grep MYSQL_ROOT_PASSWORD .env)"
+echo ""
+echo "After the import:"
+echo "  1. Write the permalink rules (the container applies them within seconds):"
+echo "       docker compose exec wordpress wp rewrite flush --hard"
+echo "  2. Commit wp-content/themes and wp-content/plugins, then give them back to this"
+echo "     checkout's owner so the deploy's git pull can write them again:"
+echo "       docker compose exec -T -u root wordpress chown -R $(id -u):$(id -g) \\"
+echo "         /var/www/html/wp-content/themes /var/www/html/wp-content/plugins"
 echo ""

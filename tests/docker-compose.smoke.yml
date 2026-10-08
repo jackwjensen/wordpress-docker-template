@@ -1,11 +1,17 @@
 # Smoke-test overrides.
-# - Drops the volumes, so running the test never writes WordPress's default themes/plugins into
-#   the working tree; core then lives in the container layer, which survives `restart`.
+# - Drops the host bind mounts (wp-content/themes, wp-content/plugins), so running the test
+#   never writes WordPress's default themes/plugins into the working tree. The named volumes
+#   stay: the container is read-only, so they are the only places it can write. They belong to
+#   the `wordpress-smoke` project and `down -v` removes them.
 # - Publishes no ports: tests/smoke.sh probes from inside the container, so the test never
 #   needs (or takes) host port 8080, which every local project shares.
 services:
   wordpress:
     ports: !override []
-    volumes: !override []
+    volumes: !override
+      - wp-html:/var/www/html
+      - wp-uploads:/var/www/html/wp-content/uploads
+      - ols-logs:/usr/local/lsws/logs
+      - ols-cache:/usr/local/lsws/cachedata
   mysql:
     ports: !override []

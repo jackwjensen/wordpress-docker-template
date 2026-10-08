@@ -54,8 +54,33 @@ COPY docker/openlitespeed/vhconf.conf /usr/local/lsws/conf/vhosts/wordpress/vhco
 COPY --from=core --chown=www-data:www-data /usr/src/wordpress /usr/src/wordpress
 COPY docker/openlitespeed/make-wp-config.php /usr/local/lib/wordpress-docker/make-wp-config.php
 COPY --chmod=755 docker/openlitespeed/entrypoint.sh /usr/local/bin/wordpress-entrypoint
-RUN mkdir -p /var/www/html \
-    && chown www-data:www-data /var/www/html
+
+# Everything runs as www-data — OpenLiteSpeed, lsphp, the entrypoint, WP-CLI. Docker lets an
+# unprivileged process bind :80 inside the container (net.ipv4.ip_unprivileged_port_start=0),
+# so root buys nothing here. OpenLiteSpeed gets the directories it reads and writes; the
+# docroot and wp-content's mount points are created owned by www-data, so a NEW named volume
+# mounted there is seeded with that ownership (Docker copies it from the image).
+#
+# The container runs read-only (docker-compose.yml). OpenLiteSpeed writes parsed copies of its
+# configuration into conf/ and a download into admin/conf/ at every start, so those two are
+# tmpfs mounts, and the configuration itself is kept in *.image here and copied in by the
+# entrypoint — a volume there would freeze the first image's configuration forever.
+RUN chown -R www-data:www-data \
+        /usr/local/lsws/conf /usr/local/lsws/admin /usr/local/lsws/logs /usr/local/lsws/tmp \
+        /usr/local/lsws/cachedata /usr/local/lsws/cgid /usr/local/lsws/autoupdate \
+    && cp -a /usr/local/lsws/conf /usr/local/lsws/conf.image \
+    && cp -a /usr/local/lsws/admin/conf /usr/local/lsws/admin/conf.image \
+    && mkdir -p /var/www/html/wp-content/uploads /var/www/html/wp-content/themes \
+        /var/www/html/wp-content/plugins \
+    && chown -R www-data:www-data /var/www/html
+# /usr/local/bin first: the base image's PATH lists it LAST, so its own unwrapped
+# /usr/bin/wp would shadow the pinned, checksum-verified WP-CLI and wrapper above.
+# WP-CLI's download cache: www-data's home is not writable in the read-only container.
+ENV PATH="/usr/local/bin:${PATH}" \
+    WP_CLI_CACHE_DIR=/tmp/wp-cli-cache
+# www-data, by number (Ubuntu's uid/gid 33): a name may not resolve on the host, and the
+# compose tmpfs mounts are given to uid=33 to match.
+USER 33:33
 
 WORKDIR /var/www/html
 EXPOSE 80 8080

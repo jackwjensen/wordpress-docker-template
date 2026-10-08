@@ -24,7 +24,9 @@ set SITE_NAME=%~1
 set PROD_DOMAIN=%~2
 set LOCAL_URL=%~3
 if "%LOCAL_URL%"=="" set LOCAL_URL=http://localhost:8080
-set DEV_DB_PASSWORD=WordPress_Dev123!
+rem The LOCAL mysql client runs inside the mysql container, which already holds the password
+rem in its own environment ($MYSQL_ROOT_PASSWORD is expanded by sh there, not by cmd here).
+set LOCAL_MYSQL=docker compose exec -T mysql sh -c "MYSQL_PWD=$MYSQL_ROOT_PASSWORD exec mysql -uroot wordpress"
 
 if not exist backups mkdir backups
 
@@ -37,17 +39,23 @@ if errorlevel 1 (
 )
 
 echo Step 2: Importing into local database...
-docker compose exec -T -e MYSQL_PWD=%DEV_DB_PASSWORD% mysql mysql -uroot wordpress < backups\prod_sync.sql
+%LOCAL_MYSQL% < backups\prod_sync.sql
 
 echo Step 3: Fixing URLs...
-if not "%PROD_DOMAIN%"=="" (
-    docker compose exec -T -e MYSQL_PWD=%DEV_DB_PASSWORD% mysql mysql -uroot wordpress -e "UPDATE wp_options SET option_value = REPLACE(option_value, 'https://%PROD_DOMAIN%', '%LOCAL_URL%') WHERE option_value LIKE '%%%PROD_DOMAIN%%%'; UPDATE wp_options SET option_value = REPLACE(option_value, 'http://%PROD_DOMAIN%', '%LOCAL_URL%') WHERE option_value LIKE '%%%PROD_DOMAIN%%%';"
-    docker compose exec -T -e MYSQL_PWD=%DEV_DB_PASSWORD% mysql mysql -uroot wordpress -e "UPDATE wp_posts SET post_content = REPLACE(post_content, 'https://%PROD_DOMAIN%', '%LOCAL_URL%') WHERE post_content LIKE '%%%PROD_DOMAIN%%%'; UPDATE wp_posts SET guid = REPLACE(guid, 'https://%PROD_DOMAIN%', '%LOCAL_URL%') WHERE guid LIKE '%%%PROD_DOMAIN%%%';"
-    docker compose exec -T -e MYSQL_PWD=%DEV_DB_PASSWORD% mysql mysql -uroot wordpress -e "UPDATE wp_postmeta SET meta_value = REPLACE(meta_value, 'https://%PROD_DOMAIN%', '%LOCAL_URL%') WHERE meta_value LIKE '%%%PROD_DOMAIN%%%';"
-)
+if "%PROD_DOMAIN%"=="" goto urls_done
+rem Written to a file and piped in: the SQL cannot nest inside the sh -c quoting above.
+> backups\url_fix.sql echo UPDATE wp_options SET option_value = REPLACE(option_value, 'https://%PROD_DOMAIN%', '%LOCAL_URL%') WHERE option_value LIKE '%%%PROD_DOMAIN%%%';
+>> backups\url_fix.sql echo UPDATE wp_options SET option_value = REPLACE(option_value, 'http://%PROD_DOMAIN%', '%LOCAL_URL%') WHERE option_value LIKE '%%%PROD_DOMAIN%%%';
+>> backups\url_fix.sql echo UPDATE wp_posts SET post_content = REPLACE(post_content, 'https://%PROD_DOMAIN%', '%LOCAL_URL%') WHERE post_content LIKE '%%%PROD_DOMAIN%%%';
+>> backups\url_fix.sql echo UPDATE wp_posts SET guid = REPLACE(guid, 'https://%PROD_DOMAIN%', '%LOCAL_URL%') WHERE guid LIKE '%%%PROD_DOMAIN%%%';
+>> backups\url_fix.sql echo UPDATE wp_postmeta SET meta_value = REPLACE(meta_value, 'https://%PROD_DOMAIN%', '%LOCAL_URL%') WHERE meta_value LIKE '%%%PROD_DOMAIN%%%';
+%LOCAL_MYSQL% < backups\url_fix.sql
+:urls_done
 
 echo Step 4: Fixing uploads permissions...
-docker compose exec -T wordpress chown -R www-data:www-data /var/www/html/wp-content/uploads
+rem The container runs as www-data; -u root, because uploads from an older stack may still be
+rem root-owned.
+docker compose exec -T -u root wordpress chown -R www-data:www-data /var/www/html/wp-content/uploads
 
 echo.
 echo Done! Local DB is now a copy of production.

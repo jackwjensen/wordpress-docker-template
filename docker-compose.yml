@@ -4,6 +4,9 @@
 # runs only when started and never comes back on its own after a Docker Desktop restart to take
 # the ports from another project. Production's restart: unless-stopped lives in
 # docker-compose.production.yml, on every service.
+#
+# MYSQL_ROOT_PASSWORD comes from .env and is never committed: ./dev.sh up (dev.bat up)
+# generates it locally, scripts/setup-server.sh on a server.
 services:
   # OpenLiteSpeed + lsphp with WordPress — one container that serves HTTP itself. It listens on
   # 8080 inside the container too, so WordPress's calls to its own address
@@ -12,13 +15,16 @@ services:
     build:
       context: .
     image: wordpress-docker-template:local
+    # <project>-web: the name the reverse proxy forwards to (port 80). Interpolated, because
+    # every site built from this template is its own instance (infrastructure.md).
+    container_name: ${COMPOSE_PROJECT_NAME:-wordpress}-web
     ports:
       - "8080:8080"
     environment:
       WORDPRESS_DB_HOST: mysql
       WORDPRESS_DB_NAME: wordpress
       WORDPRESS_DB_USER: root
-      WORDPRESS_DB_PASSWORD: WordPress_Dev123!
+      WORDPRESS_DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env - ./dev.sh up generates it}
       WORDPRESS_DEBUG: "true"
       # Written into wp-config.php at every container start (docker/openlitespeed/) —
       # change it here and restart; never edit wp-config.php itself.
@@ -27,6 +33,19 @@ services:
         define('WP_DEBUG_DISPLAY', true);
         define('SCRIPT_DEBUG', true);
         define('WP_CACHE', true);
+    # Read-only image: everything the container writes is one of the mounts below. It runs as
+    # www-data (the image's USER), so the tmpfs mounts other than /tmp are given to uid 33.
+    read_only: true
+    tmpfs:
+      # OpenLiteSpeed's sockets and swap, PHP uploads (up to 256M, config/uploads.ini) and
+      # WP-CLI's cache. RAM, so sized: room for one maximum upload plus working space.
+      - /tmp:size=512m,mode=1777
+      # Rewritten from the image at every start (the entrypoint): OpenLiteSpeed writes parsed
+      # copies of its configuration beside it, and a downloaded IP list into admin/conf.
+      - /usr/local/lsws/conf:size=4m,uid=33,gid=33,mode=0750
+      - /usr/local/lsws/admin/conf:size=4m,uid=33,gid=33,mode=0750
+      - /usr/local/lsws/tmp:size=16m,uid=33,gid=33,mode=0750
+      - /usr/local/lsws/cgid:size=1m,uid=33,gid=33,mode=0750
     volumes:
       # Core, the generated wp-config.php (its secret keys) and .htaccess (permalinks, LiteSpeed
       # Cache's rules) — kept across restarts; the entrypoint upgrades core from a newer image.
@@ -34,14 +53,19 @@ services:
       - ./wp-content/themes:/var/www/html/wp-content/themes
       - ./wp-content/plugins:/var/www/html/wp-content/plugins
       - wp-uploads:/var/www/html/wp-content/uploads
+      # OpenLiteSpeed's logs (error.log, access.log, stderr.log = PHP's errors) and the page
+      # cache, which the entrypoint empties at every start.
+      - ols-logs:/usr/local/lsws/logs
+      - ols-cache:/usr/local/lsws/cachedata
     depends_on:
       mysql:
         condition: service_healthy
 
   mysql:
     image: mysql:8.4
+    container_name: ${COMPOSE_PROJECT_NAME:-wordpress}-db
     environment:
-      MYSQL_ROOT_PASSWORD: WordPress_Dev123!
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env - ./dev.sh up generates it}
       MYSQL_DATABASE: wordpress
     ports:
       # Loopback only (the short form would put the database on the network), and never 3306,
@@ -62,3 +86,5 @@ volumes:
   mysql-data:
   wp-html:
   wp-uploads:
+  ols-logs:
+  ols-cache:

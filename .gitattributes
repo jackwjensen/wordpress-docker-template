@@ -1,0 +1,6 @@
+# Line endings, independent of each clone's core.autocrlf: LF in the repository and on
+# checkout — shell scripts with CRLF fail (`set -o pipefail\r`) — except Windows batch files,
+# which need CRLF: cmd mis-parses labels (goto / call :label) in LF-only .bat files.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf

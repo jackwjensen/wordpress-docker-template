@@ -1,18 +1,22 @@
+# Production overlay — merged via COMPOSE_FILE=docker-compose.yml:docker-compose.production.yml
+# in the server's .env (scripts/setup-server.sh writes it). Container names, the read-only
+# setup and the password from .env come from the base file; this changes only what production
+# changes: no published ports, the proxy network, production settings, and a restart policy on
+# every service.
 services:
   wordpress:
-    # The reverse proxy forwards to <project>-wordpress:80; OpenLiteSpeed serves :80 itself.
-    container_name: ${COMPOSE_PROJECT_NAME}-wordpress
+    # The reverse proxy forwards to <project>-web:80; OpenLiteSpeed serves :80 itself.
     ports: !override []
     environment:
-      WORDPRESS_DB_HOST: mysql
-      WORDPRESS_DB_NAME: wordpress
-      WORDPRESS_DB_USER: root
-      WORDPRESS_DB_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       WORDPRESS_DEBUG: "false"
+      # DISALLOW_FILE_MODS: themes and plugins come from git (installed locally, committed) and
+      # are bind-mounted from the deploy user's checkout, which www-data cannot write — so the
+      # admin must not offer installs or updates that would fail.
       WORDPRESS_CONFIG_EXTRA: |
         define('WP_DEBUG_LOG', false);
         define('WP_DEBUG_DISPLAY', false);
         define('DISALLOW_FILE_EDIT', true);
+        define('DISALLOW_FILE_MODS', true);
         define('WP_AUTO_UPDATE_CORE', false);
         define('WP_CACHE', true);
     networks:
@@ -21,13 +25,7 @@ services:
     restart: unless-stopped
 
   mysql:
-    container_name: ${COMPOSE_PROJECT_NAME}-mysql
     ports: !override []
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: wordpress
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p$$MYSQL_ROOT_PASSWORD"]
     restart: unless-stopped
 
 networks:
