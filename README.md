@@ -6,7 +6,7 @@
 ![WordPress 7.1](https://img.shields.io/badge/WordPress-7.1-21759B?logo=wordpress&logoColor=white)
 ![OpenLiteSpeed](https://img.shields.io/badge/OpenLiteSpeed-1.9-0E7DC2)
 ![PHP 8.5](https://img.shields.io/badge/PHP-8.5-777BB4?logo=php&logoColor=white)
-![MySQL 8.4 LTS](https://img.shields.io/badge/MySQL-8.4_LTS-4479A1?logo=mysql&logoColor=white)
+![MySQL 26.7](https://img.shields.io/badge/MySQL-26.7-4479A1?logo=mysql&logoColor=white)
 [![GHCR](https://img.shields.io/badge/ghcr.io-container-2496ED?logo=docker&logoColor=white)](https://github.com/jackwjensen/wordpress-docker-template/pkgs/container/wordpress-docker-template)
 
 **Clone it, run one command, and you have a full WordPress + MySQL development
@@ -14,7 +14,7 @@ environment in Docker — ready to build a site on.** When you're ready, deploy 
 to any Docker host, take it onto your own account, and (if you like) keep pulling
 improvements from upstream.
 
-Modern stack — **WordPress 7.1 · OpenLiteSpeed · PHP 8.5 · MySQL 8.4 LTS** —
+Modern stack — **WordPress 7.1 · OpenLiteSpeed · PHP 8.5 · MySQL 26.7** —
 ready for the LiteSpeed Cache plugin's server-side page cache, with GitHub Actions
 CI, a published image on GHCR, and an optional one-push deploy with automatic
 rollback.
@@ -59,7 +59,9 @@ its first run; no password is ever committed.)
   official LiteSpeed image with WordPress core from the official WordPress image,
   tuned PHP upload limits baked in, and the server-side page cache that the
   [LiteSpeed Cache](https://wordpress.org/plugins/litespeed-cache/) plugin needs.
-- **MySQL 8.4 LTS** with a real authenticated health check.
+- **MySQL 26.7** (an Innovation release — Dependabot proposes each next one) with a
+  real authenticated health check. A site already on MySQL 8.4 must go through 9.7
+  first; see PUBLISH_NOTES.md.
 - **CI on every push/PR** — ShellCheck, Hadolint, Compose validation, actionlint,
   plus a build + smoke test (see the badge above).
 - **Published image** on GHCR, built and released from a version tag (keyless).
