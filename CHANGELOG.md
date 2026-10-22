@@ -131,6 +131,11 @@ database).
 - `dev.bat cli` passed the word `cli` on to WP-CLI.
 - Line endings are pinned in `.gitattributes`: a clone without `core.autocrlf=true`
   checked the batch files out LF-only, where cmd can miss their labels.
+- CI's scanner tests are green again: the pack copy (2026.10.08-2) read its
+  `.gitattributes` template from a path only the pack itself has. Re-synced to pack
+  2026.10.14-3, which ships the template in `engineering_standards/templates/`.
+- `.gitignore` ignores every `.env*` file, not only `.env` (`.env.example` stays
+  tracked) — a `.env.local` or `.env.bak` holds the same credentials.
 
 ## [1.0.0] - 2026-06-22
 

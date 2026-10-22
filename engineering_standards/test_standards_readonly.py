@@ -1,7 +1,7 @@
 """Cases for the compose-read-only rule.
 
 The negatives decide whether this rule is keepable. It reads every compose file in the
-estate, and the services it must stay silent on -- mysql, redis, mailhog -- are exactly the
+estate, and the services it must stay silent on -- mysql, redis, mailpit -- are exactly the
 ones where read_only commonly prevents the container starting at all. If it fired on those,
 every finding's only correct resolution would be an exemption, and a rule whose findings are
 all exemptions is noise that gets switched off.
@@ -82,8 +82,8 @@ def test_quiet_on_a_third_party_image() -> None:
     assert not findings(BASE, *service("mysql", "image: mysql:8.4", "restart: unless-stopped"))
 
 
-def test_quiet_on_redis_and_mailhog() -> None:
-    for name, image in (("redis", "redis:7-alpine"), ("mailhog", "mailhog/mailhog")):
+def test_quiet_on_redis_and_mailpit() -> None:
+    for name, image in (("redis", "redis:7-alpine"), ("mailpit", "axllent/mailpit:v1.31.4")):
         assert not findings(BASE, *service(name, f"image: {image}")), name
 
 

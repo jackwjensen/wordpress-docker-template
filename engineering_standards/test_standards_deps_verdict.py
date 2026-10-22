@@ -153,6 +153,22 @@ def test_a_floating_version_blocks_and_names_the_pin_to_use() -> None:
     assert "8.4.11" in verdict.message
 
 
+def test_a_two_part_release_gets_its_patch_and_major_judged_like_any_other() -> None:
+    """PostgreSQL: the major is the line, the minor is the patch. `16.1` behind `16.10` blocks;
+    `17.6` existing while 16 has years of support left is news."""
+    releases = Answer(releases=(("16.1-alpine", None, None), ("16.10-alpine", None, None), ("17.6-alpine", None, None)))
+    cycles = [Cycle("17", False, date(2029, 11, 8)), Cycle("16", False, date(2028, 11, 9))]
+
+    def postgres(version: str) -> Dependency:
+        return Dependency(DOCKER, "postgres", version, Path("docker-compose.yml"), 4)
+
+    behind = judge(postgres("16.1-alpine"), releases, cycles, {}, TODAY)
+    assert (behind.state, behind.target) == (NEWER, "16.10-alpine")
+    assert judge(postgres("16.10-alpine"), releases, cycles, {}, TODAY).state == MAJOR_AVAILABLE
+    floating = judge(postgres("16-alpine"), releases, cycles, {}, TODAY)
+    assert floating.state == UNPINNED and "16.10-alpine" in floating.message
+
+
 def test_an_unreachable_registry_does_not_block_by_itself() -> None:
     """Whether it fails is the caller's call: warned on a laptop, failed in CI."""
     verdict = judge(RUFF, Answer(error="connection refused"), None, {}, TODAY)

@@ -16,7 +16,7 @@ on `set -o pipefail\\r` inside a Linux container the scripts were bind-mounted i
 WHAT IS CHECKED: every versioned `*.sh`, every file under the pack's `hooks/` directory
 (git hooks have no extension for `*.sh` to catch), and every `Dockerfile`, `Dockerfile.*`
 and `*.Dockerfile` -- a `RUN` continuation ending in `\\` then CR breaks the same way. Each
-must resolve `eol=lf`. `/apply-standards` seeds `templates/.gitattributes` into a repo that
+must resolve `eol=lf`. `/apply-standards` seeds `BASELINE` into a repo that
 has none; a repo that already had one keeps it, and this rule is what says which lines it
 still needs -- the seed alone would be a one-off copy nothing re-checks.
 
@@ -47,6 +47,15 @@ from standards_pack_identity import PACK_DIRECTORY
 GITATTRIBUTES_RULE = "gitattributes-eol"
 
 HOOKS_PREFIX = f"{PACK_DIRECTORY}/hooks/"
+
+# The pack's current LF baseline, at the same repo-relative path in the pack and in every repo
+# that adopts it (pack_manifest ships it there on each sync). A finding names it, so it has to
+# be a path the reader's own checkout holds -- the pack root's old `templates/` never shipped.
+BASELINE = f"{PACK_DIRECTORY}/templates/.gitattributes"
+
+# The same file, resolved from this module's own location rather than a repo root, so tests
+# read it wherever the package sits.
+BASELINE_FILE = Path(__file__).resolve().parent / "templates" / ".gitattributes"
 
 
 def suggested_line(relative: str) -> str | None:
@@ -117,6 +126,6 @@ def check_gitattributes(repo_root: Path) -> Iterable[Violation]:
                 f"'{relative}' is read by a Unix shell but resolves eol={eol}, so a checkout "
                 f"can hold CRLF (core.autocrlf=true does it) and the shell fails on the CR. Add "
                 f"'{suggested_line(relative)}' to .gitattributes (the pack's baseline is "
-                f"templates/.gitattributes)."
+                f"{BASELINE})."
             ),
         )

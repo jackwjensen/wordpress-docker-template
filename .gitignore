@@ -7,7 +7,8 @@
 !.claude/rules/
 
 # Environment
-.env
+.env*
+!.env.example
 
 # WordPress uploads (synced separately, not in git)
 wp-content/uploads/*

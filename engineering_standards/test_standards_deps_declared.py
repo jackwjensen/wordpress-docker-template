@@ -136,25 +136,50 @@ def test_a_malformed_manifest_is_named_not_skipped_quietly() -> None:
 
 
 def test_what_counts_as_a_pin() -> None:
-    assert is_exact(PYPI, "==9.1.1")
-    assert not is_exact(PYPI, ">=9.1")
-    assert is_exact(NUGET, "10.33.0.1635")
-    assert not is_exact(NUGET, "10.*")
-    assert is_exact(NPM, "19.1.0")
-    assert not is_exact(NPM, "^19.1.0")
-    assert is_exact(DOCKER, "8.4.11")
-    assert is_exact(DOCKER, "24.1.0-alpine")
+    assert is_exact(PYPI, "pytest", "==9.1.1")
+    assert not is_exact(PYPI, "pytest", ">=9.1")
+    assert is_exact(NUGET, "SonarAnalyzer.CSharp", "10.33.0.1635")
+    assert not is_exact(NUGET, "SonarAnalyzer.CSharp", "10.*")
+    assert is_exact(NPM, "react", "19.1.0")
+    assert not is_exact(NPM, "react", "^19.1.0")
+    assert is_exact(DOCKER, "mysql", "8.4.11")
+    assert is_exact(DOCKER, "node", "24.1.0-alpine")
     # Variant tags carry several suffix segments, and each still names one release -- the
     # gate itself proposes them as "newest pin in its line" (wordpress-docker-template, 2026-10-08).
-    assert is_exact(DOCKER, "7.1.3-php8.5-fpm")
-    assert is_exact(DOCKER, "8.3.12-fpm-alpine")
-    assert is_exact(DOCKER, "1.9.2-lsphp85")
-    assert not is_exact(DOCKER, "8.3-fpm-alpine")
-    assert not is_exact(DOCKER, "7.1-php8.5-fpm")
-    assert not is_exact(DOCKER, "8.4")
-    assert not is_exact(DOCKER, "latest")
-    assert is_exact(ACTION, SHA)
-    assert not is_exact(ACTION, "v7")
+    assert is_exact(DOCKER, "wordpress", "7.1.3-php8.5-fpm")
+    assert is_exact(DOCKER, "php", "8.3.12-fpm-alpine")
+    assert is_exact(DOCKER, "litespeedtech/openlitespeed", "1.9.2-lsphp85")
+    assert not is_exact(DOCKER, "php", "8.3-fpm-alpine")
+    assert not is_exact(DOCKER, "wordpress", "7.1-php8.5-fpm")
+    assert not is_exact(DOCKER, "mysql", "8.4")
+    assert not is_exact(DOCKER, "mysql", "latest")
+    assert is_exact(ACTION, "actions/checkout", SHA)
+    assert not is_exact(ACTION, "actions/checkout", "v7")
+
+
+def test_two_parts_pin_only_a_vendor_that_numbers_releases_with_two() -> None:
+    """allegro-it-services, 2026-10-14: PostgreSQL numbers a release MAJOR.MINOR, so no postgres
+    tag could pass and the pin had to be a digest. Two parts are a release only for such a
+    vendor -- for everyone else they are a line that moves onto every patch."""
+    for name in ("postgres", "library/postgres", "docker.io/library/postgres"):
+        assert is_exact(DOCKER, name, "16.1-alpine"), name
+    assert is_exact(DOCKER, "postgres", "17.6-bookworm")
+    assert is_exact(DOCKER, "postgres", "16.1")
+    assert not is_exact(DOCKER, "postgres", "16-alpine"), "a postgres major is a line"
+    assert not is_exact(DOCKER, "postgres", "16")
+    assert not is_exact(DOCKER, "postgres", "latest")
+    assert not is_exact(DOCKER, "redis", "7.2-alpine"), "redis numbers releases 7.2.N"
+    assert not is_exact(DOCKER, "node", "24")
+    assert not is_exact(DOCKER, "someone/postgres", "16.1"), "only the official image is that vendor"
+    assert not is_exact(NUGET, "postgres", "16.1"), "the list is Docker images, nothing else"
+
+
+def test_a_dependency_s_pin_is_judged_by_its_own_vendor() -> None:
+    def pinned(name: str, version: str) -> bool:
+        return Dependency(DOCKER, name, version, Path("docker-compose.yml"), 1).is_pinned
+
+    assert pinned("postgres", "16.1-alpine")
+    assert not pinned("redis", "7.2-alpine")
 
 
 def test_the_release_is_spelled_as_its_registry_spells_it() -> None:

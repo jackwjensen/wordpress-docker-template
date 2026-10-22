@@ -264,12 +264,29 @@ def test_missing_env_is_reported() -> None:
 
 
 def test_a_complete_gitignore_is_clean() -> None:
-    assert gitignore_findings(".env\n") == []
+    assert gitignore_findings(".env*\n") == []
+
+
+def test_a_bare_env_line_is_not_enough() -> None:
+    """A copy of .env is the same credential. `.env` alone left `.env.bak-staging` untracked
+    but not ignored in a production checkout (2026-10-10)."""
+    for spelling in (".env\n", ".env.local\n", "*.env\n", ".env\n.env.local\n"):
+        assert any(f.startswith("gitignore-build-output:'.env*'") for f in gitignore_findings(spelling)), spelling
+
+
+def test_env_plus_its_copies_is_enough() -> None:
+    assert gitignore_findings(".env\n.env.*\n") == []
+
+
+def test_an_example_file_is_re_admitted_on_purpose() -> None:
+    """The negation that lets `.env.example` be committed must not count against coverage."""
+    assert gitignore_findings(".env*\n!.env.example\n") == []
+    assert any(".env*" in f for f in gitignore_findings(".env\n!.env.example\n"))
 
 
 def test_dotnet_requirements_apply_only_to_a_dotnet_repo() -> None:
-    clean = gitignore_findings(".env\n")
-    dotnet = gitignore_findings(".env\n", {"src/App.csproj": "<Project />"})
+    clean = gitignore_findings(".env*\n")
+    dotnet = gitignore_findings(".env*\n", {"src/App.csproj": "<Project />"})
     assert clean == []
     assert any("bin/" in f for f in dotnet)
     assert any("obj/" in f for f in dotnet)
@@ -278,18 +295,18 @@ def test_dotnet_requirements_apply_only_to_a_dotnet_repo() -> None:
 def test_the_visual_studio_template_spelling_satisfies_dotnet() -> None:
     """The most standard .NET .gitignore there is. A literal comparison reports it as
     missing both entries."""
-    findings = gitignore_findings(".env\n[Bb]in/\n[Oo]bj/\n", {"src/App.csproj": "<Project />"})
+    findings = gitignore_findings(".env*\n[Bb]in/\n[Oo]bj/\n", {"src/App.csproj": "<Project />"})
     assert findings == []
 
 
 def test_python_bytecode_accepts_either_spelling() -> None:
     project = {"pyproject.toml": "[project]\nname='x'\n"}
-    assert not any("__pycache__" in f for f in gitignore_findings(".env\n*.py[cod]\n.venv/\n", project))
-    assert not any("__pycache__" in f for f in gitignore_findings(".env\n__pycache__/\n.venv/\n", project))
+    assert not any("__pycache__" in f for f in gitignore_findings(".env*\n*.py[cod]\n.venv/\n", project))
+    assert not any("__pycache__" in f for f in gitignore_findings(".env*\n__pycache__/\n.venv/\n", project))
 
 
 def test_node_requirement_follows_package_json() -> None:
-    findings = gitignore_findings(".env\n", {"package.json": "{}"})
+    findings = gitignore_findings(".env*\n", {"package.json": "{}"})
     assert any("node_modules/" in f for f in findings)
 
 
@@ -316,18 +333,18 @@ def test_a_present_dist_directory_must_be_ignored() -> None:
     """An external audit found a 33 MB `dist/` committed, churning a diff on every build. The
     requirement is CONDITIONAL on a dist/ existing, so a library that never builds one is not
     told to ignore it."""
-    findings = gitignore_findings(".env\n", {"dist/main-ABC.js": "// bundle"})
+    findings = gitignore_findings(".env*\n", {"dist/main-ABC.js": "// bundle"})
     assert any("dist/" in finding for finding in findings)
 
 
 def test_an_ignored_dist_directory_is_clean() -> None:
-    findings = gitignore_findings(".env\ndist/\n", {"dist/main-ABC.js": "// bundle"})
+    findings = gitignore_findings(".env*\ndist/\n", {"dist/main-ABC.js": "// bundle"})
     assert not any("dist/" in finding for finding in findings)
 
 
 def test_no_dist_directory_means_no_dist_requirement() -> None:
     """The conditional half: absent a dist/, the rule asks for nothing."""
-    findings = gitignore_findings(".env\n", {})
+    findings = gitignore_findings(".env*\n", {})
     assert not any("dist/" in finding for finding in findings)
 
 

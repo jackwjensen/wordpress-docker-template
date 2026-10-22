@@ -30,7 +30,7 @@ def make_repo(root: Path) -> Path:
     (root / "engineering_standards").mkdir(parents=True)
     for source in PACK_DIRECTORY.glob("*.py"):
         shutil.copy2(source, root / "engineering_standards" / source.name)
-    (root / ".gitignore").write_text(".env\n", encoding="utf-8")
+    (root / ".gitignore").write_text(".env*\n", encoding="utf-8")
     # A clean fixture must satisfy every repo-level rule, so these tests exercise only the
     # CLI: gitignore above, and the documentation dimension's index here.
     (root / "docs").mkdir()
@@ -80,7 +80,7 @@ def _adopted_repo_with_a_newer_ruff(root: Path, decisions: list[dict]) -> dict[s
     so the real `deps.py check` runs end to end through verify without touching the network."""
     make_repo(root)
     (root / ".gitignore").write_text(
-        ".env\n__pycache__/\n.venv/\n", encoding="utf-8"
+        ".env*\n__pycache__/\n.venv/\n", encoding="utf-8"
     )  # a requirements file makes it Python
     (root / "requirements.txt").write_text("ruff==0.16.5\n", encoding="utf-8")
     record = {"format": 1, "dependencies": {"pypi:ruff": decisions}}

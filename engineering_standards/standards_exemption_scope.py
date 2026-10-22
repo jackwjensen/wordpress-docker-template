@@ -79,6 +79,7 @@ from standards_python_consistency import CONSISTENCY_RULE as PYTHON_CONSISTENCY_
 from standards_python_support import PYTHON_RULE
 from standards_rules import LENGTH_RULE as RULES_FILE_LENGTH_RULE
 from standards_secrets import SECRET_RULE
+from standards_seed_credentials import SEEDED_RULE
 from standards_sqlinjection import RULE as SQL_INTERPOLATION_RULE
 from standards_tests import (
     TEST_ALWAYS_PASSES_RULE,
@@ -174,6 +175,7 @@ LINE_SCOPED_TAGS = frozenset(
         RETRY_RULE,
         RUNTIME_RULE,
         SECRET_RULE,
+        SEEDED_RULE,
         SQL_INTERPOLATION_RULE,
         SWALLOWS_RULE,
         TECHNICAL_ERROR_RULE,

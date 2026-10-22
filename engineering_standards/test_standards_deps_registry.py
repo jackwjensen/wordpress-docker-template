@@ -160,6 +160,21 @@ def test_a_docker_tag_is_compared_only_with_tags_of_its_shape() -> None:
     assert versions(answer) == {"9.1.0", "8.4.11", "8.4.10"}
 
 
+def test_a_two_part_vendor_is_compared_with_its_own_two_part_releases() -> None:
+    """PostgreSQL numbers releases MAJOR.MINOR: `16.1-alpine` is compared with the other
+    `N.N-alpine` releases, and a floating `16-alpine` is offered them too -- never three-part
+    tags, which postgres does not publish."""
+    url = "https://hub.docker.com/v2/namespaces/library/repositories/postgres/tags?page_size=100&ordering=last_updated"
+    tags = ["16.1-alpine", "16.10-alpine", "17.6-alpine", "16-alpine", "16.10", "alpine", "latest"]
+    registry = Registry({url: {"results": [{"name": tag} for tag in tags], "next": None}})
+    with isolated_cache():
+        pinned = lookup(dependency(DOCKER, "postgres", "16.1-alpine"), registry)
+        floating = lookup(dependency(DOCKER, "postgres", "16-alpine"), registry)
+    assert versions(pinned) == {"16.1-alpine", "16.10-alpine", "17.6-alpine"}
+    assert pinned.newest[0] == "17.6-alpine", "16.10 is above 16.9, numerically"
+    assert versions(floating) == versions(pinned)
+
+
 def test_an_lts_tag_outranks_a_higher_innovation_number() -> None:
     """Measured 2026-10-02: MySQL's `lts` pointed at 9.7.2 while `innovation` pointed at 26.7.0.
     The highest number would move a production database from 8.4 LTS onto an innovation build."""

@@ -38,8 +38,8 @@ outside the compose file — remap freely to hit the assigned host number.
 |---|---|---|
 | **Frontend / the app's main entry point** | `8080` | all interfaces |
 | **Backend / admin / API / a second web surface** | `8081` | all interfaces |
-| **Mail catcher — browsable inbox** | `1080` | all interfaces |
-| **Mail catcher — SMTP the app delivers to** | `1025` | all interfaces |
+| **Mail catcher — browsable inbox** | `1080` | **`127.0.0.1` only** |
+| **Mail catcher — SMTP the app delivers to** | `1025` | **`127.0.0.1` only** |
 | **The app's database**, whatever the engine | `3307` | **`127.0.0.1` only** |
 | Cache / broker (Redis), *only if the host needs it* | `6380` | **`127.0.0.1` only** |
 | Everything else | **not published** | — |
@@ -57,9 +57,15 @@ every webhook test.
 **The mail catcher is `1080`, and this reverses an earlier decision.** The convention was
 briefly MailHog's own default of `8025`, chosen so a stack adding MailHog out of the box would
 need no remapping. That optimised for the wrong thing: it made the port depend on *which tool*
-caught the mail, when the whole registry is meant to depend on *what the port is for*. MailHog
-therefore publishes `"1080:8025"`. The SMTP side needs no thought — MailHog and MailCatcher
-both listen on `1025`.
+caught the mail, when the whole registry is meant to depend on *what the port is for*.
+
+**The mail catcher's tool is fixed too: Mailpit** (`axllent/mailpit` at an exact tag, never
+`:latest`), published as `"127.0.0.1:1080:8025"` and `"127.0.0.1:1025:1025"`. Fixing only the
+ports let each repo take whatever was current — MailCatcher, MailHog, Mailpit all ran at once.
+MailHog has had no release since 2020; Mailpit is maintained and moves through the dependency
+gate like any image. One tool also means one API for headless mail tests: Mailpit's
+`/api/v1/messages`. Migrating off MailHog moves its `/api/v2/messages` readers too — the JSON
+shape differs.
 
 **The database is `3307` whatever the engine** — MySQL, PostgreSQL, anything. Same principle:
 one saved connection in a DB client serves every project, and "3307" means "the app I am
@@ -115,6 +121,25 @@ fails on the laptop, and a runbook cannot name a container that only exists in o
 default in the compose file** — `${COMPOSE_PROJECT_NAME:-invotrack}-web` — because a repo with no
 `.env` in development expands the bare form to nothing and names the container `-web`.
 
+### The project name gets the same fallback, as `name:` at the top of the base file
+
+```yaml
+name: ${COMPOSE_PROJECT_NAME:-allegroit-dk}
+```
+
+**Every `docker-compose.yml` opens with this, with the site's identity as the default.** The
+container-name default above is not enough on its own: without a `.env`, Compose takes the
+*folder* name as the project. A git worktree never has a `.env`, since it is gitignored, so it
+became its own project (measured on allegroit-dk, 2026-10-22: project, image and network all
+named `php-8-5-12-0f94b3` after the worktree folder). Its literal `container_name`s stayed the
+same as the main checkout's. Compose then saw two different projects fighting over one container
+name: `up` in one fails with `Conflict. The container name ... is already in use`, and `down` in
+one does not see the other's containers.
+
+The variable still wins wherever it is set, so the server's `.env` and a multi-instance repo
+like WAPPIT (`wappit-api-staging`) behave exactly as before. The fallback covers only the
+checkout that has no `.env`, and gives it the site's name instead of the folder's.
+
 ### The service name is on the shared proxy network too
 
 A stack that joins `nginx-proxy-network` registers **both** its `container_name` and its *service
@@ -139,7 +164,7 @@ the service key.
 
 **Only proxy-facing services need the unified name.** The collision this fixes is on
 `nginx-proxy-network`, so it applies to the service that joins it — the web one. A `mysql`,
-`redis` or `mailhog` service lives on the project's own `default` network, which is per-project
+`redis` or `mailpit` service lives on the project's own `default` network, which is per-project
 and cannot collide, so it keeps its short generic key and only needs a distinct
 `container_name` for `docker ps` to be readable. **Do not rename an internal service for
 tidiness**: the service key *is* the DNS name its siblings connect to, so renaming `mysql` to

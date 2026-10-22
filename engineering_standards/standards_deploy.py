@@ -306,7 +306,7 @@ def check_compose_read_only(path: Path, lines: list[str]) -> Iterable[Violation]
     THE TRIGGER IS `build:`, not the service name or the proxy network, and that is what makes
     the rule quiet enough to keep. A service with `build:` has its Dockerfile here: we control
     what it writes and can give any new path a volume. A service running a third-party image
-    (mysql, redis, mailhog) is one whose write behaviour we do not control, and where
+    (mysql, redis, mailpit) is one whose write behaviour we do not control, and where
     read-only routinely stops the container starting at all -- the official MySQL entrypoint
     writes to its datadir, /var/run and /tmp before it will serve. Flagging those would produce
     findings whose only correct resolution is an exemption, and a rule whose findings are all

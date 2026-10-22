@@ -79,6 +79,7 @@ from typing import Iterable
 from standards_core import CheckConfig, Violation, iter_code_lines, warn_unreadable
 from standards_exemptions import HEADER_SCAN_LINES, exemption_reason, line_exemption_reason
 from standards_git import ignored_files
+from standards_scope import MIGRATION_FRAGMENT
 
 # ---- disclosure-file ---------------------------------------------------------------------
 
@@ -279,7 +280,7 @@ PRUNED_DIRECTORIES = frozenset({"node_modules", "vendor", ".git", ".vs", ".idea"
 #     it is the per-location opt-out for a dump that is deliberate. (A dump that carries
 #     personal data still does not belong there -- the message says so.)
 SQL_EXEMPT_DIR_FRAGMENTS = (
-    "/migrations/",
+    MIGRATION_FRAGMENT,
     "/migration/",
     "/db/migrate/",
     "/fixtures/",
