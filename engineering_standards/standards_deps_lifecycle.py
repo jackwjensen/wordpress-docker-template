@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from datetime import date
 
 from standards_deps_cache import cached_lookup, store_lookup
-from standards_deps_declared import DOCKER, DOTNET_SDK, NUGET, Dependency
+from standards_deps_declared import DOCKER, DOTNET_SDK, NUGET, Dependency, official_image
 
 # standards: const-environment-literal exempt -- endoflife.date's published API, identical in every environment; the source Jack chose for support dates (2026-10-02)
 LIFECYCLE_API = "https://endoflife.date/api/v1/products/"
@@ -69,8 +69,8 @@ def product_for(dependency: Dependency) -> str | None:
             return "dotnet"
         if name.startswith("mcr.microsoft.com/mssql/"):
             return "mssqlserver"
-        image = name.removeprefix("docker.io/").removeprefix("library/")
-        if "/" not in image:  # an official image; a vendor's own `org/name` is not the product
+        image = official_image(name)
+        if image is not None:  # a vendor's own `org/name` is not the product
             return DOCKER_PRODUCTS.get(image)
     return None
 

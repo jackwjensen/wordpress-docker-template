@@ -30,7 +30,7 @@ from standards_exemptions import MIN_EXEMPTION_REASON_LENGTH  # noqa: E402
 from standards_selftest import run_module_tests  # noqa: E402
 from standards_tls import TLS_RULE, check_tls_verification  # noqa: E402
 
-EXEMPT = "local mailhog endpoint with a self-signed certificate; never reached in production"
+EXEMPT = "local mailpit endpoint with a self-signed certificate; never reached in production"
 assert len(EXEMPT) >= MIN_EXEMPTION_REASON_LENGTH, "fixture must clear the reason floor"
 
 

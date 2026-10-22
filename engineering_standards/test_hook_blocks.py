@@ -45,7 +45,13 @@ def make_wired_repo(tmp: Path) -> Path:
     for source in HOOKS_DIRECTORY.iterdir():
         if source.is_file():
             shutil.copy2(source, repo / "engineering_standards/hooks" / source.name)
-    (repo / ".gitignore").write_text(".env\n", encoding="utf-8")
+    (repo / ".gitignore").write_text(".env*\n", encoding="utf-8")
+    # Every adopting repo is seeded with the pack's .gitattributes, and `gitattributes-eol`
+    # (a repo-level rule the push stage runs) refuses hooks that do not resolve eol=lf.
+    # Without it this sandbox failed the push probe on that rule, not on the one under test.
+    # Read beside the package, which ships to every repo: the pack root's `templates/` does
+    # not, so reading it there broke this test in every consumer (2026.10.11-3).
+    shutil.copy2(PACK_DIRECTORY / "templates" / ".gitattributes", repo / ".gitattributes")
 
     git(repo, "init", "-q")
     git(repo, "config", "user.name", "probe")

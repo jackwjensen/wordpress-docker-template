@@ -42,12 +42,15 @@ def read_source_lines(path: Path) -> list[str] | None:
     is the honest input: every content rule then finds nothing, which is correct, and the
     credential rule reports the file from its name alone, which is all it ever needed. A
     `.env` declares no exemptions either, which is the correct answer as well as the safe one.
+
+    `utf-8-sig` drops a leading byte-order mark; left in, it hides whatever line 1 holds --
+    a header exemption marker, a directive -- from every rule anchored at the line start.
     """
     if is_never_read(path):
         return []
 
     try:
-        return path.read_text(encoding="utf-8", errors="replace").splitlines()
+        return path.read_text(encoding="utf-8-sig", errors="replace").splitlines()
     except OSError as read_error:
         print(f"warning: could not read {path}: {read_error}", file=sys.stderr)
         return None

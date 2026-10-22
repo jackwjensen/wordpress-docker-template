@@ -19,7 +19,8 @@ of each major is enriched with one extra request rather than every release.
 
 "STABLE" MEANS NO PRERELEASE: a preview SDK, an `-rc` package or an `11.0.0-preview.1` tag is
 never proposed. Docker tags are compared only within the pin's own SHAPE -- the same number of
-numeric parts and the same suffix -- and an image's `lts` tag, where it publishes one, names the
+numeric parts (at least the vendor's full release number, `release_parts`) and the same
+suffix -- and an image's `lts` tag, where it publishes one, names the
 preferred release (MySQL's `innovation` 26.7.0 is not 8.4's successor; `lts` 9.7.2 is).
 
 A GitHub token is used when the environment provides one (`GITHUB_TOKEN`, as Actions sets it,
@@ -44,7 +45,17 @@ from dataclasses import dataclass
 from typing import Callable
 
 from standards_deps_cache import cached_lookup, store_lookup
-from standards_deps_declared import ACTION, COMPOSER, DOCKER, DOTNET_SDK, NPM, NUGET, PYPI, Dependency
+from standards_deps_declared import (
+    ACTION,
+    COMPOSER,
+    DOCKER,
+    DOTNET_SDK,
+    NPM,
+    NUGET,
+    PYPI,
+    Dependency,
+    release_parts,
+)
 
 Fetch = Callable[[str, dict[str, str]], bytes]
 Release = tuple[str, str | None, str | None]  # version, ISO publish date, commit SHA (Actions only)
@@ -244,7 +255,9 @@ def _docker(dependency: Dependency, fetch: Fetch) -> Answer:
     declared = _shape(dependency.version)
     if declared is None:
         return Answer(error=f"tag `{dependency.version}` is not a version number")
-    count, suffix = max(declared[0], 3), declared[1]
+    # A floating pin is compared with full release numbers -- three parts, or two for a vendor
+    # that numbers its releases that way (`postgres:16-alpine` -> `16.10-alpine`).
+    count, suffix = max(declared[0], release_parts(DOCKER, dependency.name)), declared[1]
     tags = _docker_tags(dependency.name, fetch)
     candidates = [tag for tag in tags if _shape(tag) == (count, suffix)]
     if not candidates:

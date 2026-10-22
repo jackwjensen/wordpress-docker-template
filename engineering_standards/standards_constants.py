@@ -14,23 +14,21 @@ is `claude/rules/configuration.md`; the reasoning, the measurements, the four fa
 classes these detectors had to lose, and what was deliberately NOT implemented are in
 `docs/values-that-change.md`. None of that is restated here -- a rule in two layers drifts.
 
-Three shapes. The first two are per-file; the third is repo-level and runs from
-`standards_repository.py`, because no per-file rule can see the other file:
+Three shapes. The first, which judges configuration READS rather than declarations, lives in
+`standards_config_defaults.py` (split out 2026-10-22). The other two are here: the first is
+per-file, the second repo-level, running from `standards_repository.py` because no per-file
+rule can see the other file:
 
-  * `config-default-in-code` -- a configuration read whose fallback is a literal. The value
-    already IS configuration and there is a second copy of it in the source, which is the
-    committed-credential shape from `secrets.md` generalised past credentials.
+  * `config-default-in-code` -- a configuration read whose fallback is a literal; see
+    `standards_config_defaults.py`.
   * `const-environment-literal` -- a constant whose VALUE is environment-specific by its own
     shape: an e-mail address, an absolute filesystem path, a URL or a host:port.
   * `const-duplicated-literal` -- one value with two homes, or a constant written raw in
     another file. It reads the tree twice, and it honours its own line exemptions rather than
     relying on the driver's filter, which only ever sees the per-file walk's findings.
 
-KNOWN BLIND SPOT, stated here because it is load-bearing for the first rule.
-`config-default-in-code` reads one line at a time, so a fallback reached through a HELPER is
-invisible to it -- neither line of `Stated(app.Configuration, KEY) ?? (isDev ? Fallback : null)`
-carries both an accessor and a literal. `const-environment-literal` catches that case from the
-declaration side instead; where the value's shape gives nothing away it is judgment.
+`const-environment-literal` is also what catches a configuration fallback reached through a
+helper, which `config-default-in-code` cannot see -- the blind spot is stated in that module.
 
 Source of truth: engineering-standards/engineering_standards/standards_constants.py
 """
@@ -45,86 +43,12 @@ from standards_core import CheckConfig, Violation, iter_code_lines, warn_unreada
 from standards_exemptions import line_exemption_reason
 from standards_scope import SCRIPT_SUFFIXES
 
-CONFIG_DEFAULT_RULE = "config-default-in-code"
 ENVIRONMENT_LITERAL_RULE = "const-environment-literal"
 DUPLICATED_LITERAL_RULE = "const-duplicated-literal"
 
 # Suffixes any of these rules has an opinion about. The constant question is asked in every
 # language here; only the syntax differs.
 CONSTANT_SUFFIXES = (".cs", ".razor", ".py", ".php", *SCRIPT_SUFFIXES)
-
-# ---- config-default-in-code -------------------------------------------------------------
-
-# The accessors that mean "this value is configuration". Matched anywhere on the line, then
-# the fallback is looked for separately -- two conditions rather than one long pattern, so a
-# new accessor spelling is one entry rather than a rewrite.
-CONFIG_ACCESSORS = re.compile(
-    r"""(?x)
-    \bConfiguration\s*\[                 # C#: Configuration["Key"], builder.Configuration[...]
-  | \bconfiguration\s*\[
-  | \.GetConnectionString\s*\(
-  | \.GetValue\s*<                       # C#: GetValue<string>("Key", "default")
-  | \bos\.environ\b | \benviron\.get\s*\(  # Python
-  | \bos\.getenv\s*\( | \bgetenv\s*\(      # Python / PHP
-  | \$_ENV\s*\[ | \$_SERVER\s*\[         # PHP
-  | \bprocess\.env\b                     # JS / TS
-    """
-)
-
-# A fallback to a LITERAL. `?? "x"`, `or "x"`, `?: 'x'`, `|| "x"`, and the positional default
-# of a getter call (`getenv("KEY", "default")`).
-LITERAL_FALLBACK = re.compile(
-    r"""(?x)
-    (?:\?\?|\?:|\|\||\bor\b)\s*(?P<quote>["'])(?P<value>(?:(?!\1).)*)(?P=quote)
-  | ,\s*(?P<q2>["'])(?P<v2>(?:(?!\3).)*)(?P=q2)\s*\)
-    """
-)
-
-# `?? throw ...` is the shape `secrets.md` MANDATES for a seeder, and `?? null` is not a
-# default at all. Neither may ever be reported, or the rule would fire on the correct answer.
-CORRECT_FALLBACKS = re.compile(r"(?:\?\?|\?:|\|\|)\s*(?:throw\b|null\b|None\b|undefined\b)")
-
-
-def check_config_default(path: Path, lines: list[str]) -> Iterable[Violation]:
-    """A configuration read whose fallback is a literal written into the source.
-
-    Test files are out of scope -- see `_is_test_path` for why the whole family skips them.
-    Here the reason is sharper than elsewhere: a scanner's OWN test files contain fixture
-    source as string literals, so this rule reads its own examples back as findings. Measured
-    on this pack, where `test_standards_debugflag.py`'s fixture `os.environ.get('DEBUG')` was
-    reported as a configuration default.
-    """
-    if path.suffix not in CONSTANT_SUFFIXES or _is_test_path(path):
-        return
-
-    for line_number, line in iter_code_lines(lines, path.suffix):
-        if not CONFIG_ACCESSORS.search(line):
-            continue
-        if CORRECT_FALLBACKS.search(line):
-            continue
-
-        match = LITERAL_FALLBACK.search(line)
-        if match is None:
-            continue
-
-        value = match.group("value") or match.group("v2") or ""
-        # An empty-string default is "absent", not an invented value, and is how a great deal
-        # of correct code spells "no override". Reporting it would train people to ignore this.
-        if value.strip() == "":
-            continue
-
-        yield Violation(
-            path=path,
-            line=line_number,
-            rule=CONFIG_DEFAULT_RULE,
-            message=(
-                f"A configuration read falls back to the literal '{_clip(value)}'. The value "
-                f"already IS configuration, so this is a second copy of it that changes only "
-                f"when somebody deploys. State it in the environment file instead, or throw "
-                f"and name the missing key."
-            ),
-        )
-
 
 # ---- const-environment-literal -----------------------------------------------------------
 
@@ -472,10 +396,11 @@ def _read(path: Path) -> list[str] | None:
     A file that fails to open here contributes no declarations and no duplications, which is
     indistinguishable from a file that legitimately holds neither -- so the rule would report
     the repo clean about a file it never saw. That is the failure the whole pack is built
-    against, arriving through the error path.
+    against, arriving through the error path. `utf-8-sig` drops the BOM Visual Studio writes
+    into .razor files, which would otherwise hide a line-1 `@page` from FRAMEWORK_LITERAL_LINE.
     """
     try:
-        return path.read_text(encoding="utf-8", errors="replace").splitlines()
+        return path.read_text(encoding="utf-8-sig", errors="replace").splitlines()
     except OSError as error:
         warn_unreadable(
             path,

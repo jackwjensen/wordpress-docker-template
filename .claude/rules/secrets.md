@@ -33,7 +33,10 @@ In rough order of preference. Pick the first that fits the stack.
 2. **A gitignored `.env`.** Fine, and the estate already relies on it — but only the repo's own
    `.gitignore` counts; a global ignore is a backstop that does not travel with the clone
    (`self-contained-repo.md`). Check with it off: `git -c core.excludesFile= check-ignore -v .env`.
-   `.env.example` is committed and carries the **key names with empty values**.
+   **Ignore every copy: `.env*`** (`gitignore-build-output` enforces it) — a copy is the same
+   credential; on 2026-10-10 a `.env.bak-staging` sat unignored in a production checkout, one
+   `git add -A` from a push. Admit the example on purpose with `!.env.example`. Never back up a
+   `.env`: a fresh `.env.example` plus the secret store restores everything in it.
 3. **Generated at first run and printed once.** The strongest option where it fits: nothing to
    leak because nothing was written down. Good for a first-admin bootstrap, awkward for a demo
    cast that documentation names.
@@ -47,28 +50,26 @@ In rough order of preference. Pick the first that fits the stack.
   example, and its lesson applies here: make it *obviously* fake, because a realistic-looking
   one invites somebody to "fix" it into a real credential.
 
-## Seeders read credentials; they never contain them
+## Seed test systems through an explicit local step — never through configuration
 
-A seeder needs a password to hash, so it takes one — from configuration, never a literal — and
-it **refuses rather than defaulting**: a fallback to a built-in value is the committed value
-that then gets used wherever nobody set the variable. Throw and name the missing key
-(`configuration["Demo:Password"] ?? throw ...`). Two more: **hash it, never store it**, even for
-demo data; and **gate it on the environment**, with the guard in the seeder rather than the
-caller's good intentions.
+Test systems are seeded; the **mechanism** is the rule. A seeder, restore or app that reads an
+account password from `.env`, a compose variable or an app setting is a standing "set a
+password, get an admin" path on every machine that runs it — whoever can set that value gets
+in (`seeded-credential-config` flags the key). Instead (snippets: `templates/seed-users/`):
 
-**And it validates what it was given.** Writing a hash directly skips the framework's password
-validators, so a placeholder value yields an account holding a password the application would
-refuse — measured: a demo admin whose password was its own e-mail address, three database wipes
-before anyone found out. Check configured credentials against the *real* validators at startup;
-refuse to start otherwise, naming the failing rule and never the value.
+- **A seed command with no values**: reads the accounts as JSON on **stdin**, **refuses unless
+  the system is local** (guard in the command, not the caller), validates each password against
+  the *real* validators (a direct hash skips them — a demo admin once held its own e-mail
+  address as password), **hashes, never stores**, prints only names.
+- **A PC-side wrapper** pipes the values file into it; on a server there is nothing to pipe.
+- **Logins without the password**: a local-only, single-use, short-lived link — never typed into
+  a browser through a tool call. **A live guard** fails if the test accounts exist in production.
 
 ## The estate's standard local accounts
 
-`localadmin@allegroit.dk` and `localuser@allegroit.dk` are seeded in every repo that needs a
-local superadmin or a plain test user, so that one set of credentials works everywhere. **The
-addresses may be committed; the passwords may not.** Their values live in the identity notes
-under `~/.claude/memory/` — which is exactly the split this file describes, and the reason the
-values are in memory rather than in any repo.
+`localadmin@allegroit.dk` and `localuser@allegroit.dk` are seeded that way wherever a repo needs
+a local login. **The addresses may be committed; the passwords may not**, not even as an empty
+key: they are in `~/.claude/shared/dev-seed-users.secret.json`, piped unread, never read by Claude.
 
 ## A secret must never reach the client, git or no git
 
@@ -90,7 +91,6 @@ git diff --cached | grep -iE 'password|secret|api[_-]?key|token'
 ```
 
 A hit is not automatically wrong — a key *name* is fine — but every hit deserves the question.
-And when a credential has already been committed, rotating it is part of the fix, not an
-optional follow-up: history keeps the old one whatever the working tree says.
+A committed credential is rotated as part of the fix: history keeps it whatever the tree says.
 
 Source of truth: engineering-standards/claude/rules/secrets.md

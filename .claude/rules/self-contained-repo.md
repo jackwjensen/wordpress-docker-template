@@ -23,7 +23,7 @@ the next — usually without saying why, because the failure is in what is *abse
 | Toolchain version | `global.json`, `.python-version`, `.nvmrc`, `packageManager`, `require.php` |
 | Repo-local tools and dev dependencies | `.config/dotnet-tools.json`, `requirements*.txt` or a `pyproject.toml` dev group, `devDependencies`, `require-dev` |
 | The pack's own prerequisites | `engineering_standards/requirements.txt`, shipped with the pack |
-| Ignore rules | the repo's own `.gitignore`, `.env` included (`gitignore-missing` reads only that file) |
+| Ignore rules | the repo's own `.gitignore`, every `.env*` copy included and `!.env.example` re-admitted on purpose (`gitignore-missing` reads only that file) |
 | Commit gate | `engineering_standards/hooks/` plus the bootstrap that points git at them |
 | Configuration keys | `.env.example`: every key, empty values |
 | The one documented step | the README: clone → `.env` → build → test → run, every command spelled out |

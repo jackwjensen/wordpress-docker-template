@@ -57,24 +57,46 @@ def normalised_ignore_patterns(lines: list[str]) -> set[str]:
 
 
 class Requirement:
-    """One thing a repo must ignore, and every spelling that satisfies it."""
+    """One thing a repo must ignore, and every spelling that satisfies it.
 
-    def __init__(self, label: str, accepted: Iterable[str], why: str) -> None:
+    `accepted` holds single patterns, any one of which is enough; `together` holds sets of
+    patterns that only count when ALL of them are present (`.env` + `.env.*`).
+    """
+
+    def __init__(
+        self,
+        label: str,
+        accepted: Iterable[str],
+        why: str,
+        together: Iterable[Iterable[str]] = (),
+    ) -> None:
         self.label = label
         self.accepted = frozenset(form.casefold() for form in accepted)
+        self.together = tuple(frozenset(form.casefold() for form in group) for group in together)
         self.why = why
 
     def is_satisfied_by(self, patterns: set[str]) -> bool:
-        return bool(self.accepted & patterns)
+        return bool(self.accepted & patterns) or any(group <= patterns for group in self.together)
 
 
 # Applies to every repo, whatever it is written in. `.env` is first because it is the only
 # entry here whose absence is a security defect rather than a hygiene one.
+#
+# EVERY COPY, NOT JUST `.env` (Jack, 2026-10-10). A bare `.env` line used to pass, and a
+# `.env.bak-staging` -- a copy made on a server before an edit, holding the same passwords --
+# then sat untracked but NOT ignored in a production checkout, one `git add -A` from being
+# pushed. A copy of the file is the same credential. So the requirement is `.env*` (or
+# `.env` + `.env.*`), and an example file is admitted ON PURPOSE with its own negation,
+# `!.env.example`: a negation is never counted as coverage (normalised_ignore_patterns), so
+# re-admitting the example cannot weaken the rule, and nothing else gets in by accident.
 UNIVERSAL_REQUIREMENTS = (
     Requirement(
-        ".env",
-        (".env", ".env*", "*.env", ".env.local"),
-        "an unignored .env is a live credential the moment the repo is pushed",
+        ".env*",
+        (".env*",),
+        "every copy of .env (.env.local, .env.bak, .env.staging) is as live a credential as "
+        ".env itself; ignore '.env*' and re-admit an example file on purpose with "
+        "'!.env.example'",
+        together=((".env", ".env.*"),),
     ),
 )
 

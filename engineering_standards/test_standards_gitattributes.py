@@ -27,14 +27,20 @@ from typing import Iterator
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from standards_gitattributes import (  # noqa: E402
+    BASELINE,
+    BASELINE_FILE,
     GITATTRIBUTES_RULE,
     check_gitattributes,
     suggested_line,
 )
 from standards_selftest import run_module_tests  # noqa: E402
 
+# The repository the package sits in -- the pack itself, or a repo that adopted it.
 PACK_ROOT = Path(__file__).resolve().parent.parent
-SEED = (PACK_ROOT / "templates" / ".gitattributes").read_text(encoding="utf-8")
+
+# Read beside the package, never from the pack root: the root's `templates/` does not ship,
+# so this line once failed collection in every consuming repo (2026.10.11-3).
+SEED = BASELINE_FILE.read_text(encoding="utf-8")
 SCRIPT = "#!/bin/sh\nset -eu\n"
 
 
@@ -68,7 +74,14 @@ def test_a_shell_script_with_no_gitattributes_fires() -> None:
         found = flagged(root)
     assert list(found) == ["scripts/deploy.sh"]
     assert "*.sh text eol=lf" in found["scripts/deploy.sh"], "the finding names the line to add"
-    assert "templates/.gitattributes" in found["scripts/deploy.sh"], "and where the baseline is"
+    assert BASELINE in found["scripts/deploy.sh"], "and where the baseline is"
+
+
+def test_the_baseline_a_finding_names_is_the_file_beside_the_package() -> None:
+    """The message points the reader at BASELINE; it must be the file the tests read, and both
+    must exist wherever the package runs -- in the pack and in every repo it is synced into."""
+    assert BASELINE_FILE.is_file()
+    assert BASELINE_FILE.as_posix().endswith(BASELINE)
 
 
 def test_hooks_without_the_hooks_line_fire_even_when_sh_is_covered() -> None:
