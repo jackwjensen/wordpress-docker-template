@@ -1,6 +1,6 @@
 # WordPress Docker Template
 
-Claude context for this repo. It's a clone-and-own template for Dockerised WordPress sites: one OpenLiteSpeed container (WordPress 7.1 + lsphp 8.5, ready for LiteSpeed Cache), MySQL 8.4 LTS, local dev via Docker Compose, CI + GHCR releases, and an optional SSH deploy to any Docker host. The user-facing guide is `README.md`; the knowledge behind it is in `docs/` (index below); this file holds what must be known before touching anything.
+Claude context for this repo. It's a clone-and-own template for Dockerised WordPress sites: one OpenLiteSpeed container (WordPress 7.1 + lsphp 8.5, ready for LiteSpeed Cache), MySQL 26.7 (Innovation; 8.4 data must go through 9.7 first), local dev via Docker Compose, CI + GHCR releases, and an optional SSH deploy to any Docker host. The user-facing guide is `README.md`; the knowledge behind it is in `docs/` (index below); this file holds what must be known before touching anything.
 
 ## Using this template
 

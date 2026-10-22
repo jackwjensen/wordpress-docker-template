@@ -117,6 +117,9 @@ database).
 - **The deploy pulls before it builds** (`docker compose pull --ignore-buildable`, then
   `build --pull`), so a server fetches a newly pinned tag and same-tag security rebuilds;
   the rollback stays unpulled. See PUBLISH_NOTES.md.
+- **MySQL 26.7.0** (Innovation) instead of 8.4 LTS. MySQL will not open 8.4 data on 26.7
+  in place: an existing site's database goes through 9.7 LTS first, or is dumped and
+  reloaded — see PUBLISH_NOTES.md before deploying.
 - CI installs its test tools from `engineering_standards/requirements.txt` (ruff 0.16.10,
   pytest 9.1.1) instead of versions typed into the workflow.
 

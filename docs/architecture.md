@@ -17,7 +17,7 @@ nginx + PHP-FPM the same day; this template moved from Apache.
   WP-CLI + `config/uploads.ini` (as `mods-available/zz-uploads.ini`, lsphp's ini scan dir).
 - WordPress core comes from the official `wordpress:7.1.3-php8.5-fpm` image (multi-stage `core`,
   with `wp-config-docker.php` removed). Every image and action is pinned to one exact release
-  (`mysql:8.4.11`, actions by commit SHA); Dependabot proposes the moves.
+  (`mysql:26.7.0`, actions by commit SHA); Dependabot proposes the moves.
 - `docker/openlitespeed/` = server config (`httpd_config.conf`: `www-data`, `disableWebAdmin 1`,
   :8080 + :80 plain HTTP, the cache module), the vhost (`vhconf.conf`: `.htaccess` rewrites),
   `entrypoint.sh` (core install/upgrade → `make-wp-config.php` → configuration into the tmpfs →
@@ -26,7 +26,10 @@ nginx + PHP-FPM the same day; this template moved from Apache.
 - `php` on the PATH is lsphp's CLI; WP-CLI runs on it through the `wp` wrapper. The image puts
   `/usr/local/bin` first on the `PATH`: the base image lists it last and ships its own
   unwrapped `/usr/bin/wp`, which would otherwise shadow the pinned one.
-- MySQL 8.4 LTS is the database.
+- MySQL 26.7 is the database: an Innovation release, supported only until the next one, so
+  take Dependabot's MySQL bumps as they come (Jack chose it over 8.4 LTS, 2026-10-22). MySQL
+  refuses to open 8.4 data on 26.7 in place; such a volume goes through 9.7 LTS first, or is
+  dumped and reloaded (PUBLISH_NOTES.md).
 
 ## Why LiteSpeed, not Apache or nginx
 
