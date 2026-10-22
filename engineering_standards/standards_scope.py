@@ -175,13 +175,25 @@ def looks_like_workflow(path: Path) -> bool:
 # here too: the sentinel traps are runtime behaviour, identical with or without types.
 SCRIPT_SUFFIXES = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
 
+# THE ONE EXCLUSION A RULE MAY REACH THROUGH. A migrations directory is excluded because a
+# framework writes most of what is in it, and length, naming and structure rules have no
+# business judging generated code. But not everything in there is generated: a hand-written
+# data migration that creates an administrator from an environment variable is the
+# seeded-credential-config shape in its worst home -- it runs on EVERY environment the schema
+# is applied to, production included. So a migration is skipped by `should_check` and offered
+# instead to `should_check_migration`, whose files the driver hands to `check_migration_file`
+# in standards_dispatch -- which runs only the rules that must see one. Found 2026-10-14: the
+# whole-tree scan called allegro-it-services clean while the rule's own self-test, walking
+# that tree without this exclusion, found a migration seeding a superuser from configuration.
+MIGRATION_FRAGMENT = "/migrations/"
+
 # Paths never checked: machine-generated, vendored, or build output.
 EXCLUDED_PATH_FRAGMENTS = (
     "/obj/",
     "/bin/",
     "/node_modules/",
     "/vendor/",
-    "/migrations/",
+    MIGRATION_FRAGMENT,
     "/.git/",
     "/dist/",
     "/build/",
@@ -196,20 +208,9 @@ EXCLUDED_PATH_FRAGMENTS = (
 EXCLUDED_NAME_FRAGMENTS = (".min.", ".g.", ".designer.", ".generated.")
 
 
-def should_check(path: Path, repo_root: Path, config: CheckConfig) -> bool:
-    """Decide whether a file is in scope.
-
-    Exclusions are matched against the REPO-RELATIVE path, never the absolute one: a repo
-    that happens to live under a directory called "build" or "dist" would otherwise have
-    every one of its files silently skipped.
-
-    THE PACK'S OWN FILES ARE NOT THE CONSUMING REPO'S SOURCE. A repo that adopted the pack
-    holds ~100 files it did not write and must not edit, so measuring them here reported
-    findings and exemption markers nobody in that repo could act on -- see
-    standards_pack_identity. In the PACK's own repository they are the source, and are
-    checked exactly as before.
-    """
-    in_scope = (
+def _in_scope_by_kind(path: Path, repo_root: Path) -> bool:
+    """Whether the file is a kind any rule reads at all -- by suffix, filename or location."""
+    return bool(
         path.suffix in SOURCE_SUFFIXES
         or COMPOSE_FILENAME.match(path.name)
         or ENV_EXAMPLE_FILENAME.match(path.name)
@@ -227,17 +228,52 @@ def should_check(path: Path, repo_root: Path, config: CheckConfig) -> bool:
         or DEPENDENCY_MANIFEST_FILENAME.match(path.name)
         or is_workflow(path, repo_root)
     )
-    if not in_scope:
-        return False
 
+
+def _excluding_fragments(path: Path, repo_root: Path, config: CheckConfig) -> set[str] | None:
+    """The path exclusions this file falls under, or None when it is never read at all.
+
+    None covers the two refusals no rule may reach through: the pack's own file inside a
+    consumer, and a generated NAME (`.Designer.cs`, `.min.js`) -- the latter is exactly what
+    EF writes beside every migration, and it stays skipped by the migration route too.
+    """
     relative = path.relative_to(repo_root)
     if is_foreign_pack_file(relative, repo_root):
-        return False
-
+        return None
+    if any(fragment in path.name.casefold() for fragment in EXCLUDED_NAME_FRAGMENTS):
+        return None
     lowered = "/" + relative.as_posix().casefold() + "/"
-
     excluded = EXCLUDED_PATH_FRAGMENTS + config.extra_excluded_fragments
-    if any(fragment.casefold() in lowered for fragment in excluded):
-        return False
+    return {fragment.casefold() for fragment in excluded if fragment.casefold() in lowered}
 
-    return not any(fragment in path.name.casefold() for fragment in EXCLUDED_NAME_FRAGMENTS)
+
+def should_check_migration(path: Path, repo_root: Path, config: CheckConfig) -> bool:
+    """A source file that `should_check` skips ONLY because it sits in a migrations directory.
+
+    Source suffixes only: a migration is code, and nothing else in that directory carries
+    the shapes the migration route looks for. Any OTHER exclusion still wins -- a migration
+    under `node_modules/` or `vendor/` is somebody else's code, and a repo's own
+    `extra_excluded_fragments` are its stated decision.
+    """
+    if path.suffix not in SOURCE_SUFFIXES:
+        return False
+    fragments = _excluding_fragments(path, repo_root, config)
+    return fragments == {MIGRATION_FRAGMENT}
+
+
+def should_check(path: Path, repo_root: Path, config: CheckConfig) -> bool:
+    """Decide whether a file is in scope.
+
+    Exclusions are matched against the REPO-RELATIVE path, never the absolute one: a repo
+    that happens to live under a directory called "build" or "dist" would otherwise have
+    every one of its files silently skipped.
+
+    THE PACK'S OWN FILES ARE NOT THE CONSUMING REPO'S SOURCE. A repo that adopted the pack
+    holds ~100 files it did not write and must not edit, so measuring them here reported
+    findings and exemption markers nobody in that repo could act on -- see
+    standards_pack_identity. In the PACK's own repository they are the source, and are
+    checked exactly as before.
+    """
+    if not _in_scope_by_kind(path, repo_root):
+        return False
+    return _excluding_fragments(path, repo_root, config) == set()

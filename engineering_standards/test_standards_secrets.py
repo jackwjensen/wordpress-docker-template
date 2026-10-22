@@ -44,6 +44,13 @@ STRIPE_TEST = "sk_" + "test_" + PAYLOAD
 BREVO = "xkeysib" + "-" + PAYLOAD
 AWS = "AKIA" + "J" * 16
 GITHUB = "ghp_" + "b" * 36
+GITHUB_APP_CLASSIC = "ghs_" + "c" * 36
+GITHUB_REFRESH = "ghr_" + "r" * 76
+# The stateless installation-token format GitHub began rolling out in 2026: a ~520-character JWT
+# behind the same `ghs_` prefix, so dots and base64url's `-` and `_` sit inside the payload. The
+# `-` and `_` are placed early on purpose -- the old letters-and-digits-only pattern stopped at
+# the first of them and let this token through.
+GITHUB_APP_STATELESS = "ghs_" + "eyJ-hb_Gc" + "i" * 60 + "." + "d" * 380 + "." + "s" * 66
 SLACK = "xoxb" + "-" + "1234567890" + "-" + PAYLOAD
 GOOGLE = "AIza" + "C" * 35
 PEM = "-----BEGIN RSA " + "PRIVATE KEY" + "-----"
@@ -66,6 +73,9 @@ def test_every_known_format_is_caught() -> None:
         ("brevo", BREVO),
         ("aws", AWS),
         ("github", GITHUB),
+        ("github app classic", GITHUB_APP_CLASSIC),
+        ("github app stateless", GITHUB_APP_STATELESS),
+        ("github refresh", GITHUB_REFRESH),
         ("slack", SLACK),
         ("google", GOOGLE),
         ("pem", PEM),
@@ -89,6 +99,7 @@ def test_the_documented_prefix_alone_is_not_a_finding() -> None:
     detector itself clean -- a rule that fires on its own documentation gets exempted on sight."""
     assert known_format("use sk_live_ keys in production") is None
     assert known_format("the AKIA prefix identifies an AWS key") is None
+    assert known_format("installation tokens start with ghs_ and may contain dots") is None
 
 
 # ---- tier 2: shape ---------------------------------------------------------------------------
@@ -218,6 +229,7 @@ def test_the_finding_never_quotes_the_credential() -> None:
     the match relocates the leak into the terminal and the CI log rather than closing it."""
     for line, secret in (
         (f'  "Stripe:SecretKey": "{STRIPE}"', STRIPE),
+        (f'  "GitHub:Token": "{GITHUB_APP_STATELESS}"', GITHUB_APP_STATELESS),
         ('  "Password": "Sommer2026!"', "Sommer2026!"),
     ):
         message = found("appsettings.json", line)[0]

@@ -42,7 +42,7 @@ def make_repo(root: Path) -> None:
     (root / ".standards.json").write_text(json.dumps({"maxFileLines": 10}), encoding="utf-8")
     # The plain check run also enforces the gitignore rule; satisfy it so these tests
     # exercise only the baseline writer.
-    (root / ".gitignore").write_text(".env\n", encoding="utf-8")
+    (root / ".gitignore").write_text(".env*\n", encoding="utf-8")
     filler = [f"int x{i};" for i in range(14)]
     (root / "alpha.cs").write_text("\n".join(["// plain"] + filler), encoding="utf-8")
     (root / "bravo.cs").write_text(
@@ -132,7 +132,7 @@ def add_project(root: Path, *lines: str) -> None:
     a reason that has nothing to do with what they are testing. Caught by the exemption test
     below on its first run.
     """
-    (root / ".gitignore").write_text(".env\nbin/\nobj/\n", encoding="utf-8")
+    (root / ".gitignore").write_text(".env*\nbin/\nobj/\n", encoding="utf-8")
     (root / "App.csproj").write_text(
         "\n".join(["<Project>", "  <ItemGroup>", *lines, "  </ItemGroup>", "</Project>"]),
         encoding="utf-8",

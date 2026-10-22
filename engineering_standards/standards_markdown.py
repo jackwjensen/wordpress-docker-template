@@ -76,8 +76,10 @@ def frontmatter_block(lines: list[str]) -> list[str] | None:
 
 
 def read_lines(path: Path) -> list[str]:
+    # `utf-8-sig` drops a leading byte-order mark, which would otherwise make line 1 read
+    # "﻿---" and hide the page's whole frontmatter block.
     try:
-        return path.read_text(encoding="utf-8", errors="replace").splitlines()
+        return path.read_text(encoding="utf-8-sig", errors="replace").splitlines()
     except OSError as error:
         # The empty list is what makes this dangerous: an unreadable page becomes an EMPTY
         # page, and an empty page passes the frontmatter, broken-link and stale-symbol rules

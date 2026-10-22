@@ -120,6 +120,14 @@ def test_frontmatter_value_comment_is_ignored() -> None:
         assert "docs-frontmatter" not in rules_fired(root)
 
 
+def test_frontmatter_after_a_byte_order_mark_is_still_frontmatter() -> None:
+    """A BOM left in line 1 reads `\\ufeff---`, which is not a fence, so the whole block
+    vanished and both required keys were reported missing from a page that has them."""
+    with repo() as root:
+        write(root, "docs/index.md", "﻿---\naudience: dev\ntype: reference\n---\n")
+        assert "docs-frontmatter" not in rules_fired(root)
+
+
 # ---- docs-broken-link ----------------------------------------------------------------------
 
 

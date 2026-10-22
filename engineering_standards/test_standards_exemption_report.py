@@ -75,6 +75,14 @@ def test_undecodable_bytes_do_not_raise():
         assert lines is not None and len(lines) == 2
 
 
+def test_a_byte_order_mark_is_not_part_of_line_one():
+    """Left in, U+FEFF sits before whatever line 1 holds and hides it from every rule
+    anchored at the line start -- a Blazor `@page`, a header exemption marker."""
+    with repo() as root:
+        path = write(root, "LogInd.razor", '﻿@page "/log-ind"\n')
+        assert read_source_lines(path) == ['@page "/log-ind"']
+
+
 # ---- what the report names --------------------------------------------------------------
 
 

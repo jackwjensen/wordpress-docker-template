@@ -71,6 +71,13 @@ def test_exact_pins_are_quiet() -> None:
         assert unpinned_lines(relative, body) == [], f"{relative}: an exact pin was reported"
 
 
+def test_a_two_part_vendor_s_release_is_a_pin_at_commit_too() -> None:
+    """The commit rule and the push gate share `is_exact`, so `postgres:16.1-alpine` passes both
+    -- and a two-part redis line still fails here, offline, before any registry is asked."""
+    body = "services:\n  db:\n    image: postgres:16.1-alpine\n  cache:\n    image: redis:7.2-alpine\n"
+    assert unpinned_lines("docker-compose.yml", body) == [5]
+
+
 def test_the_finding_is_on_the_declaring_line() -> None:
     body = "services:\n  app:\n    build: .\n  db:\n    image: mysql:8.4\n"
     assert unpinned_lines("docker-compose.yml", body) == [5]

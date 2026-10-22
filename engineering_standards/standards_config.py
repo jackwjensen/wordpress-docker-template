@@ -356,7 +356,8 @@ class CheckConfig:
     # The judgment layer judged as a budget -- see standards_rules.py. On by default in every
     # repo, because the cost it measures is paid in every repo that received the rules.
     check_rules: bool = True
-    # Where a value that may change is allowed to live -- see standards_constants.py. One flag
+    # Where a value that may change is allowed to live -- see standards_config_defaults.py and
+    # standards_constants.py. One flag
     # for all three shapes, because a repo that genuinely disagrees disagrees with the premise
     # rather than with one detector. Off is a real answer for a repo with no deployment of its
     # own -- a library, a shared schema package -- where "read it from the environment" names

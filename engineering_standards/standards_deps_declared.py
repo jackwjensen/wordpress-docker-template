@@ -10,6 +10,26 @@ WHAT COUNTS AS DECLARED: a version written in a file the repository owns -- proj
 lockless manifests, Dockerfiles, compose files, workflows, `global.json`. Lockfiles are NOT read:
 they record what was resolved, and the decision this gate polices is the one a person wrote.
 
+HOW MANY NUMBERS NAME ONE RELEASE is a fact about the vendor, not about the tag. Most number a
+release with three parts, so `redis:7.2-alpine` and `node:24` are LINES -- tags that move onto
+every patch -- and stay unpinned. PostgreSQL has numbered releases MAJOR.MINOR since 10
+(`16.1`, `17.6`: the major is the line, the minor is the patch), so `postgres:16.1-alpine` is one
+release and no three-part postgres tag exists to pin instead. `TWO_PART_RELEASES` names those
+vendors' official images, and `release_parts` is the one answer both `is_exact` and the registry
+lookup's tag shape read (found 2026-10-14, when allegro-it-services could only pin postgres by
+digest). It is a pack-held list rather than either alternative, deliberately:
+
+* not REGISTRY EVIDENCE ("no `16.1.N` tag is published, so `16.1` is a release"): pinning is
+  decided offline, at commit, by `dependency-unpinned` from this same `is_exact` -- a network
+  answer would make the commit rule and the push gate disagree -- and Docker Hub's tag list is
+  paged, so an absent deeper tag is not proof; that failure would pass a floating tag.
+* not a `.standards.json` DECLARATION: the numbering is the same in every repository, so a
+  per-repo key is a copy waiting to drift, and one repo declaring `redis` two-part would reopen
+  exactly the floating tag this rule refuses, with no reason attached.
+
+An image missing from the list fails closed -- its two-part pin reads as unpinned -- and the fix
+is one line here, never a looser pattern. Until then a digest pin is still a pin.
+
 PACK-OWNED FILES ARE SKIPPED IN A CONSUMER. `engineering_standards/requirements.txt` and the
 analyzer list in `Directory.Build.props` belong to the pack: a consumer cannot change them
 (the next sync overwrites the edit), so judging them there would block a push on a decision the
@@ -60,9 +80,16 @@ COMPOSE_IMAGE = re.compile(r"""^\s*image:\s*["']?(?P<image>[^"'\s#]+)""")
 SHA = re.compile(r"^[0-9a-f]{40}$")
 ACTION_TAG_COMMENT = re.compile(r"\s*(v?\d+(?:\.\d+)*)\b")
 
+RELEASE_PARTS = 3
+# Official images whose vendor numbers a release with two parts (see the module docstring).
+TWO_PART_RELEASES = frozenset({"postgres"})
+
 # A full release number, then any variant suffixes: `24.1.0-alpine`, `7.1.3-php8.5-fpm`. The
-# number decides exactness; a suffix only picks a flavour of that one release.
-EXACT_NUMERIC = re.compile(r"^v?\d+(?:\.\d+){2,3}(?:[-+][\w.]+)*$")
+# number decides exactness; a suffix only picks a flavour of that one release. Keyed by how many
+# parts make a full release number; a fourth is a build number (NuGet's `10.33.0.1635`).
+EXACT_NUMERIC = {
+    parts: re.compile(rf"^v?\d+(?:\.\d+){{{parts - 1},3}}(?:[-+][\w.]+)*$") for parts in (2, RELEASE_PARTS)
+}
 
 
 @dataclass(frozen=True)
@@ -85,7 +112,7 @@ class Dependency:
     @property
     def is_pinned(self) -> bool:
         """Whether the version names exactly one release (decision 1 of the 2026-10-02 plan)."""
-        return is_exact(self.ecosystem, self.version)
+        return is_exact(self.ecosystem, self.name, self.version)
 
     @property
     def release(self) -> str:
@@ -96,17 +123,32 @@ class Dependency:
         return version
 
 
-def is_exact(ecosystem: str, version: str) -> bool:
-    """Whether a version as WRITTEN names exactly one release in its ecosystem."""
+def official_image(name: str) -> str | None:
+    """A Docker Hub official image's bare name (`docker.io/library/postgres` -> `postgres`), or
+    None for a vendor's own `org/name` or another registry's image -- which is not that product."""
+    image = name.lower().removeprefix("docker.io/").removeprefix("library/")
+    return image if "/" not in image else None
+
+
+def release_parts(ecosystem: str, name: str) -> int:
+    """How many numeric parts name exactly one release of this dependency (module docstring)."""
+    if ecosystem == DOCKER and official_image(name) in TWO_PART_RELEASES:
+        return 2
+    return RELEASE_PARTS
+
+
+def is_exact(ecosystem: str, name: str, version: str) -> bool:
+    """Whether a version as WRITTEN names exactly one release of this dependency."""
     if ecosystem == PYPI:
         return version.startswith("==") and "*" not in version
     if ecosystem == ACTION:
         return bool(SHA.match(version))
+    exact = EXACT_NUMERIC[release_parts(ecosystem, name)]
     if ecosystem == DOCKER:
-        return version.startswith("sha256:") or bool(EXACT_NUMERIC.match(version))
+        return version.startswith("sha256:") or bool(exact.match(version))
     # NuGet: a plain `Version="x"` resolves to exactly x for a direct reference (it is the
     # LOWEST version satisfying the floor), so a literal three-or-four part version is a pin.
-    return bool(EXACT_NUMERIC.match(version))
+    return bool(exact.match(version))
 
 
 def _line_number(text: str, offset: int) -> int:

@@ -18,7 +18,8 @@ the front of the forwarded chain -- see standards_client_address.py), technical-
 (an exception's own text or a bare status code reaching the user -- see
 standards_user_errors.py), the constants family
 (config-default-in-code, const-environment-literal, plus const-duplicated-literal on
-whole-tree scans -- see standards_constants.py), the deployment-contract family (compose-port,
+whole-tree scans -- see standards_config_defaults.py and standards_constants.py), the
+deployment-contract family (compose-port,
 compose-container-name, compose-overlay-name, deploy-gate, env-example-compose),
 plus the documentation family on whole-tree scans (docs-missing, docs-frontmatter,
 docs-broken-link, docs-orphan-page, docs-stale-symbol, claude-md-length -- see
@@ -58,6 +59,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 # Import the sibling module by path rather than relying on the caller's cwd: the commit
 # hook and the CI job both invoke this script from the repo root, not from engineering_standards/.
@@ -82,7 +84,7 @@ from standards_checks import (  # noqa: E402  (path must be set before the impor
     Violation,
 )
 from standards_coverage import check_coverage  # noqa: E402  (same reason)
-from standards_dispatch import check_source_file  # noqa: E402  (same reason)
+from standards_dispatch import check_migration_file, check_source_file  # noqa: E402  (same reason)
 from standards_docs import check_documentation  # noqa: E402  (same reason)
 from standards_exemption_report import (  # noqa: E402  (same reason)
     collect_exemptions,
@@ -102,13 +104,24 @@ from standards_paydown import check_paydown  # noqa: E402  (same reason)
 from standards_registry import NEVER_BASELINED, TOOLCHAINS  # noqa: E402,F401  (same reason)
 from standards_repository import repository_violations  # noqa: E402  (same reason)
 from standards_rules import check_rules  # noqa: E402  (same reason)
-from standards_scope import should_check  # noqa: E402  (same reason)
+from standards_scope import should_check, should_check_migration  # noqa: E402  (same reason)
 from standards_tests import check_tests_cover_modules  # noqa: E402  (same reason)
 from standards_userdocs import check_userdocs, unsynced_change_notes  # noqa: E402  (same reason)
 
 
-def candidate_files(root: Path, config: CheckConfig, only: list[Path] | None = None) -> list[Path]:
-    """Every in-scope file, or the in-scope subset of `only`.
+class ScanScope(NamedTuple):
+    """What one run reads: the in-scope files, and the migrations only a few rules may see."""
+
+    paths: list[Path]
+    migrations: list[Path]
+
+
+def candidate_files(root: Path, config: CheckConfig, only: list[Path] | None = None) -> ScanScope:
+    """Every in-scope file, or the in-scope subset of `only` -- plus the migrations among them.
+
+    The migrations come out of the SAME walk rather than a second one: in a consumer with a
+    `node_modules/` the walk is the expensive half of a scan, and two resolvers would also be
+    two answers to "what was examined". `should_check_migration` explains why they exist.
 
     One resolver for all three collectors, so a scoped run cannot accidentally walk the
     tree for exemptions while checking a subset for violations -- the two would then
@@ -117,8 +130,8 @@ def candidate_files(root: Path, config: CheckConfig, only: list[Path] | None = N
 
     `only` is filtered through the same `should_check` predicate rather than trusted: a
     staged path may be a deleted file, a submodule, or something the scanner is not
-    supposed to read (a migration, vendored code), and naming it explicitly does not make
-    it in scope.
+    supposed to read (vendored code), and naming it explicitly does not make it in scope. A
+    staged migration is filtered the same way, into the migration route and nothing more.
 
     FILES GIT IGNORES ARE NOT SCANNED. The walk reads the filesystem, but every rule here
     is about what a repository CONTAINS -- so a path git is told to ignore, and does not
@@ -140,8 +153,12 @@ def candidate_files(root: Path, config: CheckConfig, only: list[Path] | None = N
         paths = [path for path in paths if path.is_relative_to(root)]
 
     ignored = ignored_files(root)
+    files = [path for path in paths if path.is_file() and path not in ignored]
 
-    return [path for path in paths if path.is_file() and path not in ignored and should_check(path, root, config)]
+    return ScanScope(
+        [path for path in files if should_check(path, root, config)],
+        [path for path in files if should_check_migration(path, root, config)],
+    )
 
 
 def collect_oversized_files(root: Path, config: CheckConfig, paths: list[Path]) -> dict[str, int]:
@@ -173,12 +190,13 @@ def write_baseline(
     that gates a write are standards_baseline.py's. Scope narrowing is ignored on purpose --
     see write_baseline_file for what a partial baseline silently destroys.
     """
-    paths = candidate_files(root, config)
+    scope = candidate_files(root, config)
+    paths = scope.paths
     oversized = collect_oversized_files(root, config, paths)
     member_violations = sorted(
         violation_key(violation, root)
         for violation in (
-            *collect_violations(root, config, oversized, paths),
+            *collect_violations(root, config, oversized, scope),
             *check_documentation(root, config),
             *check_coverage(root, config),
             *check_userdocs(root, config),
@@ -195,15 +213,20 @@ def write_baseline(
     return write_baseline_file(baseline_path, config, oversized, member_violations, consent_flag)
 
 
-def collect_violations(root: Path, config: CheckConfig, baseline: dict[str, int], paths: list[Path]) -> list[Violation]:
+def collect_violations(root: Path, config: CheckConfig, baseline: dict[str, int], scope: ScanScope) -> list[Violation]:
     violations: list[Violation] = []
 
-    for path in paths:
+    for path in scope.paths:
         lines = read_source_lines(path)
         if lines is None:
             continue
 
         violations.extend(check_source_file(path, lines, config, baseline, root))
+
+    for path in scope.migrations:
+        lines = read_source_lines(path)
+        if lines is not None:
+            violations.extend(check_migration_file(path, lines))
 
     return violations
 
@@ -330,7 +353,7 @@ def baseline_argument_error(arguments: argparse.Namespace) -> int | None:
 def print_summary(
     root: Path,
     config: CheckConfig,
-    paths: list[Path],
+    scope: ScanScope,
     only: list[Path] | None,
     remaining: list[Violation],
     grandfathered: list[Violation],
@@ -345,7 +368,9 @@ def print_summary(
     for setting, value, reason in config.tuning:
         print(f"tuned: {setting} = {value} -- {reason}")
 
-    exemptions = collect_exemptions(root, config, paths)
+    # File-scoped markers only, and no rule on the migration route reads one -- so a marker in
+    # a migration would be printed here as honoured while nothing honours it.
+    exemptions = collect_exemptions(root, config, scope.paths)
     for relative, rule, reason in exemptions:
         print(f"exempt: {relative} [{rule}] -- {reason}")
 
@@ -355,7 +380,7 @@ def print_summary(
         print(f"\ncheck-source-limits: {len(remaining)} violation(s)", file=sys.stderr)
         return 1
 
-    notes = [f"{len(paths)} file(s)" if only is not None else "whole tree"]
+    notes = [f"{len(scope.paths) + len(scope.migrations)} file(s)" if only is not None else "whole tree"]
     if grandfathered:
         notes.append(f"{len(grandfathered)} grandfathered")
     if exemptions:
@@ -400,7 +425,8 @@ def main(argv: list[str]) -> int:
     if scope_error:
         return scope_error
 
-    paths = candidate_files(root, config, only)
+    scope = candidate_files(root, config, only)
+    paths = scope.paths
 
     # Named rather than silently tolerated: these are the only files where reading the
     # working tree can disagree with what is actually being committed.
@@ -414,7 +440,7 @@ def main(argv: list[str]) -> int:
         oversized_baseline, known_violations = {}, set()
     else:
         oversized_baseline, known_violations = load_baseline(baseline_path)
-    violations = collect_violations(root, config, oversized_baseline, paths)
+    violations = collect_violations(root, config, oversized_baseline, scope)
 
     # The one check about the REPOSITORY rather than about a file, so it runs only on a
     # whole-tree scan. Running it at commit would block every commit in a repo whose
@@ -445,7 +471,7 @@ def main(argv: list[str]) -> int:
     return print_summary(
         root,
         config,
-        paths,
+        scope,
         only,
         remaining,
         grandfathered,

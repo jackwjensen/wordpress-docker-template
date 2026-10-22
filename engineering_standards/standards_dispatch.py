@@ -50,7 +50,8 @@ from standards_checks import (
 )
 from standards_client_address import check_client_address
 from standards_concurrency import check_concurrency
-from standards_constants import check_config_default, check_environment_literal
+from standards_config_defaults import check_config_default
+from standards_constants import check_environment_literal
 from standards_cors import check_cors_wildcard
 from standards_debugflag import check_debug_flag
 from standards_disclosure import check_disclosure_file
@@ -62,11 +63,26 @@ from standards_scope import (
     SCRIPT_SUFFIXES,
 )
 from standards_secrets import check_committed_credentials
+from standards_seed_credentials import check_seeded_credentials
 from standards_sqlinjection import check_sql_injection
 from standards_tests import check_test_quality
 from standards_tls import check_tls_verification
 from standards_user_errors import check_technical_error_shown
 from standards_write_results import check_write_results
+
+
+def check_migration_file(path: Path, lines: list[str]) -> Iterable[Violation]:
+    """The rules that reach INTO a migrations directory, and only those.
+
+    Everything else stays out, deliberately: a framework writes most of a migration, so the
+    length, naming and structure rules would be judging generated code nobody chose. What
+    belongs here is a rule whose subject is MORE dangerous inside a migration than outside
+    one -- a migration runs on every environment the schema reaches, production included.
+    seeded-credential-config is that: a data migration creating an administrator from an
+    environment variable is the "set a password, get an admin" path on every server. Which
+    files arrive here is standards_scope.should_check_migration's decision.
+    """
+    yield from check_seeded_credentials(path, lines)
 
 
 def check_source_file(
@@ -103,6 +119,9 @@ def check_source_file(
     # file type this rule would otherwise be blind to, which is exactly how the mojibake rule
     # shipped broken once already.
     yield from check_committed_credentials(path, lines)
+    # Its sibling, for the same reason: the seeded-password MECHANISM lives in `.env.example`,
+    # compose files and appsettings -- all past the early returns below -- as much as in source.
+    yield from check_seeded_credentials(path, lines)
 
     # DEBUG FLAG RUNS BESIDE THE TWO ABOVE, ABOVE EVERY EARLY RETURN, AND FOR THE SAME REASON.
     # A verbose-error / debug flag turned on in production is an information-disclosure defect
@@ -221,7 +240,8 @@ def check_source_file(
     # See standards_user_errors.py.
     yield from check_technical_error_shown(path, lines, config.user_facing_exceptions)
 
-    # Where a value that may change is allowed to live -- see standards_constants.py. Config-
+    # Where a value that may change is allowed to live -- see standards_config_defaults.py
+    # and standards_constants.py. Config-
     # gated rather than unconditional, unlike the four security rules above: a value in the
     # wrong place costs a deploy, not a breach, so a repo is allowed to disagree in writing.
     # The third rule of this family, const-duplicated-literal, is repo-level and runs in

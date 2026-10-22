@@ -60,7 +60,13 @@ CREDENTIAL_FORMATS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("a Stripe webhook signing secret", re.compile(r"\bwhsec_[A-Za-z0-9]{16,}")),
     ("a Brevo API key", re.compile(r"\bxkeysib-[A-Za-z0-9]{16,}")),
     ("an AWS access key id", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
-    ("a GitHub token", re.compile(r"\b(?:ghp|gho|ghs|ghu)_[A-Za-z0-9]{30,}|\bgithub_pat_[A-Za-z0-9_]{30,}")),
+    # `ghs_` is a GitHub App installation token, and since 2026 it can be a stateless JWT: ~520
+    # characters, two dots, base64url's `-` and `_`. Letters-and-digits-only stopped at the first
+    # of those and passed the token. The charset is GitHub's own published validation pattern.
+    (
+        "a GitHub token",
+        re.compile(r"\b(?:ghp|gho|ghu|ghr)_[A-Za-z0-9]{30,}|\bghs_[A-Za-z0-9._-]{36,}|\bgithub_pat_[A-Za-z0-9_]{30,}"),
+    ),
     ("a Slack token", re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{10,}")),
     ("a Google API key", re.compile(r"\bAIza[0-9A-Za-z_\-]{35}\b")),
     ("a SendGrid API key", re.compile(r"\bSG\.[A-Za-z0-9_\-]{16,}\.[A-Za-z0-9_\-]{16,}")),

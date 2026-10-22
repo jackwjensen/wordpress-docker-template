@@ -5,6 +5,9 @@ Plain asserts, no pytest, so it runs anywhere Python does:
 
     python engineering_standards/test_standards_constants.py
 
+`config-default-in-code`'s cases moved to test_standards_config_defaults.py with the rule
+(2026-10-22); the list below keeps its history.
+
 THE CASES THAT MATTER MOST ARE THE QUIET ONES. All three rules fire on shapes that are
 extremely common in correct code -- a `??`, an absolute-looking string, a repeated word -- so
 the risk here is not a missed finding but a noisy rule, which gets baselined wholesale and
@@ -29,14 +32,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from standards_config import CheckConfig  # noqa: E402
 from standards_constants import (  # noqa: E402
-    check_config_default,
     check_duplicated_constants,
     check_environment_literal,
 )
-
-
-def defaults(source: str, name: str = "Startup.cs") -> list[str]:
-    return [v.rule for v in check_config_default(Path(name), source.splitlines())]
 
 
 def environment(source: str, name: str = "Startup.cs") -> list[str]:
@@ -66,46 +64,6 @@ def messages(files: dict[str, str]) -> list[str]:
             path.write_text(body, encoding="utf-8")
             paths.append(path)
         return [v.message for v in check_duplicated_constants(root, paths, CheckConfig())]
-
-
-# ---- config-default-in-code -------------------------------------------------------------
-
-
-def test_a_csharp_configuration_read_with_a_literal_fallback_fires():
-    assert defaults('var host = Configuration["Mail:Host"] ?? "localhost";') == ["config-default-in-code"]
-
-
-def test_the_python_php_and_javascript_spellings_fire_too():
-    """One rule, four languages -- the shape is the same and only the syntax differs."""
-    assert defaults('host = os.getenv("MAIL_HOST", "localhost")', "settings.py")
-    assert defaults("$host = getenv('MAIL_HOST') ?: 'localhost';", "config.php")
-    assert defaults('const host = process.env.MAIL_HOST ?? "localhost";', "env.ts")
-
-
-def test_throwing_instead_of_defaulting_is_the_correct_answer_and_stays_quiet():
-    """`secrets.md` MANDATES this shape for a seeder. Firing on it would be firing on the fix."""
-    assert defaults('var key = Configuration["Api:Key"] ?? throw new InvalidOperationException();') == []
-
-
-def test_falling_back_to_null_is_not_a_default():
-    assert defaults('var host = Configuration["Mail:Host"] ?? null;') == []
-
-
-def test_an_empty_default_is_absence_not_an_invented_value():
-    assert defaults('host = os.getenv("MAIL_HOST", "")', "settings.py") == []
-
-
-def test_falling_back_to_another_configured_value_is_quiet():
-    assert defaults('var x = Configuration["A"] ?? Configuration["B"];') == []
-
-
-def test_a_literal_fallback_with_no_configuration_read_is_not_this_rule():
-    assert defaults('var name = candidate ?? "unknown";') == []
-
-
-def test_a_test_files_fixture_source_is_not_a_configuration_default():
-    """This pack's own tests carry example source as literals; the rule read them back."""
-    assert defaults("source = \"DEBUG = os.environ.get('DEBUG') == '1'\"", "test_settings.py") == []
 
 
 # ---- const-environment-literal -----------------------------------------------------------
@@ -254,6 +212,19 @@ def test_a_blazor_page_directive_cannot_reference_a_constant_so_it_is_not_report
         {
             "Endpoints.cs": '    internal const string LoginPath = "/log-ind";\n',
             "LogInd.razor": '@page "/log-ind"\n',
+        }
+    )
+    assert findings == []
+
+
+def test_a_page_directive_after_a_byte_order_mark_is_still_a_page_directive():
+    """Visual Studio saves .razor files with a UTF-8 BOM, and `\\s` does not match U+FEFF, so a
+    BOM left in line 1 hid the `@page` from the exemption. Measured on payvisia's
+    Dashboard.razor and Kriterier.razor, 2026-10-11."""
+    findings = duplicated(
+        {
+            "Endpoints.cs": '    internal const string LoginPath = "/log-ind";\n',
+            "LogInd.razor": '﻿@page "/log-ind"\n',
         }
     )
     assert findings == []
