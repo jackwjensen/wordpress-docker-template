@@ -11,10 +11,10 @@
 # installs it into the wp-html volume, and upgrades the volume's core when this stage is newer.
 # Its wp-config-docker.php reads the environment on every request, which lsphp cannot — dropped;
 # docker/openlitespeed/make-wp-config.php writes wp-config.php instead.
-FROM wordpress:7.1.3-php8.5-fpm AS core
+FROM wordpress:7.1.4-php8.5-fpm AS core
 RUN rm /usr/src/wordpress/wp-config-docker.php
 
-FROM litespeedtech/openlitespeed:1.9.2-lsphp85
+FROM litespeedtech/openlitespeed:1.9.3-lsphp85
 
 # curl: the container HEALTHCHECK below, the deploy-time health probe (scripts/healthcheck.sh
 # in "compose service" mode) and the WP-CLI download.
