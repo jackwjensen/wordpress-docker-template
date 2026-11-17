@@ -14,7 +14,7 @@
 FROM wordpress:7.1.3-php8.5-fpm AS core
 RUN rm /usr/src/wordpress/wp-config-docker.php
 
-FROM litespeedtech/openlitespeed:1.9.2-lsphp85
+FROM litespeedtech/openlitespeed:1.9.4-lsphp85
 
 # curl: the container HEALTHCHECK below, the deploy-time health probe (scripts/healthcheck.sh
 # in "compose service" mode) and the WP-CLI download.

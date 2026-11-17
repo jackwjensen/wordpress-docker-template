@@ -12,7 +12,7 @@ hosts run OpenLiteSpeed + the LiteSpeed Cache plugin; he has bad experiences wit
 and WP Rocket). Carried over from Ellengaard (`ellengaard-dk` commit `20b8a09`), which moved from
 nginx + PHP-FPM the same day; this template moved from Apache.
 
-- `Dockerfile` = `litespeedtech/openlitespeed:1.9.2-lsphp85` (Ubuntu 26.04, PHP 8.5.9;
+- `Dockerfile` = `litespeedtech/openlitespeed:1.9.4-lsphp85` (Ubuntu 26.04, PHP 8.5.12;
   extensions a superset of the official image's except `pdo_sqlite`/`sqlite3`) + curl + pinned
   WP-CLI + `config/uploads.ini` (as `mods-available/zz-uploads.ini`, lsphp's ini scan dir).
 - WordPress core comes from the official `wordpress:7.1.3-php8.5-fpm` image (multi-stage `core`,

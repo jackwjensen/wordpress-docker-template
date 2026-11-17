@@ -57,10 +57,17 @@ old value (from the 1.0.0 `docker-compose.yml`) in `.env` to keep the volume —
 `dev.sh up` generate a new one and run `./dev.sh reset` (which deletes the local
 database).
 
+### Security
+
+- **PHP2Shell** (CVE-2026-109618, CVE-2026-109619 — unauthenticated code execution in
+  PHP 5.4–8.5): the OpenLiteSpeed base moved from `1.9.2-lsphp85`, which ships lsphp
+  8.5.9, to `1.9.4-lsphp85`, which ships the fixed 8.5.12. The PHP that serves the site
+  is lsphp from this image; the `wordpress:*-fpm` stage only supplies WordPress core.
+
 ### Changed
 
 - **Web server: OpenLiteSpeed instead of Apache** — one container built on
-  `litespeedtech/openlitespeed:1.9.2-lsphp85` (PHP 8.5, from 8.4), with WordPress
+  `litespeedtech/openlitespeed:1.9.4-lsphp85` (PHP 8.5, from 8.4), with WordPress
   core from the official `wordpress:7.1-php8.5-fpm` image. The LiteSpeed Cache
   plugin's page cache only works on a LiteSpeed server; README, "Page cache:
   LiteSpeed Cache", covers setup, WooCommerce's REST API cache, and moving off
